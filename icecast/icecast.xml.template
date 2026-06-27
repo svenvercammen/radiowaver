@@ -17,9 +17,10 @@
         <client-timeout>30</client-timeout>
         <header-timeout>15</header-timeout>
         <source-timeout>10</source-timeout>
-        <!-- Snelle start voor de speler: stuur meteen wat buffer mee -->
+        <!-- Kleinere burst = lagere latency bij verbinden/omschakelen.
+             ~32 KB ≈ 2s buffer bij 128 kbps (was 64 KB / ~4s). -->
         <burst-on-connect>1</burst-on-connect>
-        <burst-size>65535</burst-size>
+        <burst-size>32768</burst-size>
     </limits>
 
     <authentication>

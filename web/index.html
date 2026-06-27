@@ -420,14 +420,14 @@
       return;
     }
     grid.innerHTML = partners.map(function(p){
-      var inner = p.logo
-        ? '<img src="' + esc(p.logo) + '" alt="' + esc(p.name) + '" class="h-14 w-14 object-contain mb-2"/>'
-        : '<div class="h-14 w-14 flex items-center justify-center mb-2 text-outline"><span class="material-symbols-outlined text-4xl">handshake</span></div>';
-      var card = '<div class="bg-surface-container-low border border-outline-variant p-3 flex flex-col items-center justify-center rounded-lg h-full">' +
-                   inner +
-                   '<span class="text-label-sm font-label-sm text-on-surface-variant text-center leading-tight">' + esc(p.name) + '</span>' +
+      var media = p.logo
+        ? '<div class="w-full aspect-square bg-white flex items-center justify-center overflow-hidden"><img src="' + esc(p.logo) + '" alt="' + esc(p.name) + '" class="w-full h-full object-contain"/></div>'
+        : '<div class="w-full aspect-square flex items-center justify-center text-outline"><span class="material-symbols-outlined text-5xl">handshake</span></div>';
+      var card = '<div class="bg-surface-container-low border border-outline-variant rounded-lg overflow-hidden">' +
+                   media +
+                   '<span class="block text-label-sm font-label-sm text-on-surface-variant text-center leading-tight px-1 py-2">' + esc(p.name) + '</span>' +
                  '</div>';
-      return p.url ? '<a href="' + esc(p.url) + '" target="_blank" rel="noopener">' + card + '</a>' : card;
+      return p.url ? '<a href="' + esc(p.url) + '" target="_blank" rel="noopener" class="block">' + card + '</a>' : card;
     }).join("");
   }
 
@@ -504,6 +504,15 @@
   var partners = document.getElementById("partners-section");
 
   var isLive = false;
+  var lastMode = null;
+
+  // Spring naar de live-rand (drop gebufferde muziek) bij start van een live-uitzending.
+  function reconnect(){
+    if(audio.paused) return;
+    audio.src = STREAM + "?_=" + Date.now();
+    var p = audio.play();
+    if(p && p.catch){ p.catch(function(){}); }
+  }
 
   function setPlaying(on){
     heroIcon.innerText = on ? "pause" : "play_arrow";
@@ -571,6 +580,10 @@
 
   // mode: "live" (echte uitzending) | "music" (non-stop muziek) | "offline"
   function applyState(mode, src){
+    // Bij overgang naar een echte live-uitzending: spring naar de live-rand.
+    if(mode === "live" && lastMode && lastMode !== "live" && !audio.paused){ reconnect(); }
+    lastMode = mode;
+
     badge.classList.remove("bg-secondary", "bg-outline", "bg-amber-500", "live-pulse");
     barLive.classList.remove("text-secondary", "text-amber-400", "text-white/50");
 
@@ -626,7 +639,7 @@
   setPlaying(false);
   applyState("offline", null);
   refresh();
-  setInterval(refresh, 10000);
+  setInterval(refresh, 5000);
 })();
 </script>
 </body></html>

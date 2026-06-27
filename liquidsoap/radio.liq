@@ -10,7 +10,8 @@
 pw = environment.get("ICECAST_SOURCE_PASSWORD")
 
 # Live van de event-pc (BUTT levert hier aan: poort 8005, mount /live, user source).
-live = input.harbor("live", port=8005, password=pw)
+# Kleinere buffer = lagere live-latency (iets gevoeliger voor jitter op de upload).
+live = input.harbor("live", port=8005, password=pw, buffer=1.0, max=4.0)
 
 # Muziek-fallback: speelt de lijst in volgorde, in oneindige lus,
 # en herlaadt automatisch zodra de playlist wijzigt.
