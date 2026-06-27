@@ -21,16 +21,23 @@ Ubuntu, Caddy als reverse proxy met automatische HTTPS).
 
 | Fase | Inhoud | Status |
 |------|--------|--------|
-| **1 — Publiek + dev** | Statische spelerpagina, Icecast-container, lokale dev-omgeving, uitrol-docs | **nu opgeleverd** |
-| **2 — Beheer** | Beheerpagina achter **Keycloak**-login (now-playing tagline, status, wachtwoordbeheer) | gepland |
+| **1 — Publiek + dev** | Statische spelerpagina, Icecast-container, lokale dev-omgeving, uitrol-docs | **opgeleverd** |
+| **2 — Beheer** | Beheerpagina achter **Keycloak**-login: mededelingenbalk, **live berichten** (gemodereerd), agenda (met affiche) en partners (met logo). Publieke pagina wordt dynamisch gevuld. | **opgeleverd** |
 
-Beslissingen voor fase 1:
+Beslissingen:
 - **Luisteren is publiek**, geen login (PRD B3).
-- **Beheer komt later** achter Keycloak (toevoeging op de PRD, fase 2).
-- **De bron levert aan met het Icecast `source`-wachtwoord** (PRD B5) — geen
-  aparte bron-login in fase 1.
-- **Geen secrets in git**: de drie wachtwoorden komen uit `.env` en worden bij
-  het starten in de Icecast-config gerenderd (envsubst in de entrypoint).
+- **De bron levert aan met het Icecast `source`-wachtwoord** (PRD B5).
+- **Beheer** zit achter een **eigen Keycloak-container** (rol `beheerder`).
+- **Geen secrets in git**: alle wachtwoorden komen uit `.env`.
+
+### Beheer (fase 2) in het kort
+
+- Subtiel **slot-icoon** in de footer van de site → **/beheer/** (Keycloak-login).
+- Modules in het beheer: **Mededeling** (balk bovenaan), **Live berichten**
+  (bezoekers sturen boodschappen in → beheerder keurt goed → scrollen bovenaan),
+  **Agenda** ("On air op", met affiche per moment) en **Partners** (met logo).
+- De publieke pagina haalt deze inhoud op uit `GET /api/content` en ververst
+  elke 30 s; valt terug op de statische inhoud als de API niet bereikbaar is.
 
 ---
 
@@ -38,20 +45,23 @@ Beslissingen voor fase 1:
 
 ```
 radiowaver/
-├─ icecast/                 Icecast2-container
-│  ├─ Dockerfile            Debian + icecast2 (self-contained, PRD B6)
-│  ├─ icecast.xml.template  config-template; ${...} wordt uit .env ingevuld
-│  └─ entrypoint.sh         rendert de config en start Icecast
+├─ icecast/                 Icecast2-container (Dockerfile, template, entrypoint)
+├─ backend/                 FastAPI-beheer-API (SQLite + uploads)
+│  ├─ Dockerfile
+│  ├─ requirements.txt
+│  └─ app/                  main.py (routes), auth.py (Keycloak), db.py
 ├─ web/
-│  └─ index.html            publieke spelerpagina (live-status + luisteraars)
-├─ docker-compose.yml       productie: Icecast + web-container (VM `web`-netwerk)
-├─ docker-compose.dev.yml   dev: Icecast + lokale Caddy op http://localhost:8080
+│  ├─ index.html            publieke spelerpagina (dynamisch gevuld)
+│  └─ beheer/index.html     beheerpagina achter Keycloak-login
+├─ infra/keycloak/          realm-import (radiowaver-realm.json)
+├─ docker-compose.yml       productie: icecast + api + keycloak + web
+├─ docker-compose.dev.yml   dev: volledige stack op http://localhost:8080
 ├─ Caddyfile.web            interne Caddy van de prod web-container (:80)
 ├─ Caddyfile.snippet        blok voor de gedeelde Caddy op de VM
 ├─ Caddyfile.dev            lokale dev-Caddy (geen TLS)
-├─ .env.example             sjabloon voor de wachtwoorden (kopieer naar .env)
+├─ .env.example             sjabloon voor alle secrets (kopieer naar .env)
 ├─ .gitignore
-└─ briefing/                oorspronkelijke brief + PRD (radiowaver-prd.md)
+└─ briefing/                oorspronkelijke brief + PRD + design
 ```
 
 ---
@@ -65,13 +75,17 @@ Vereist: **Docker Desktop** (Windows/Mac) of Docker Engine + compose-plugin.
 cp .env.example .env
 #   zet ICECAST_HOSTNAME=localhost voor lokaal testen en kies wachtwoorden
 
-# 2. Icecast + lokale Caddy starten
+# 2. Volledige stack starten (icecast + api + keycloak + caddy)
 docker compose -f docker-compose.dev.yml up --build
 ```
 
 Open **<http://localhost:8080>**. Zonder bron staat de speler op *offline* met
 een uitgeschakelde knop. Stoppen: `Ctrl-C`, of `docker compose -f
 docker-compose.dev.yml down`.
+
+**Beheer lokaal:** <http://localhost:8080/beheer/> — login **`beheerder`** /
+**`radiowaver`** (eerste keer: profiel aanvullen + wachtwoord wijzigen).
+Keycloak heeft na de start ~15 s nodig om het realm te importeren.
 
 ### Een test-bron pushen (zonder mengpaneel)
 
@@ -102,11 +116,13 @@ Zodra de bron loopt, toont <http://localhost:8080> *on air* en kun je luisteren.
 De agent kan de VM niet bereiken — draai dit zelf op de server. Radio Waver past
 in het bestaande patroon van de VM: een **gedeelde Caddy in Docker** op het
 externe netwerk **`web`** routeert per containernaam. Radio Waver draait als
-eigen compose-project `radiowaver-prod` met twee containers:
+eigen compose-project `radiowaver-prod` met vier containers:
 
 - `radiowaver-icecast-prod` — Icecast; publiceert poort **8000** (bron-aanlevering).
-- `radiowaver-web-prod` — Caddy die de speler serveert en `/live` + `/status`
-  intern naar Icecast proxyt; hangt aan `web`, **geen** host-poort.
+- `radiowaver-api-prod` — FastAPI-beheer (SQLite + uploads), intern.
+- `radiowaver-keycloak-prod` — eigen Keycloak (login voor het beheer), intern.
+- `radiowaver-web-prod` — Caddy die de speler serveert en `/live`, `/api`,
+  `/auth` en `/uploads` intern routeert; hangt aan `web`, **geen** host-poort.
 
 **Vooraf (jij):** DNS voor `radio.waver.be` → IP van de VM, en het netwerk `web`
 bestaat al (van JEKA/daak). Check: `docker network ls | grep web`.
@@ -115,25 +131,33 @@ bestaat al (van JEKA/daak). Check: `docker network ls | grep web`.
    ```bash
    git clone https://github.com/svenvercammen/radiowaver.git
    cd radiowaver
-   cp .env.example .env        # vul de drie wachtwoorden in, hostname = radio.waver.be
+   cp .env.example .env        # vul ALLE waarden in (Icecast + Keycloak + issuer)
    ```
+   Belangrijk in `.env`: `ICECAST_HOSTNAME=radio.waver.be`,
+   `PUBLIC_URL=https://radio.waver.be`,
+   `KEYCLOAK_ISSUER=https://radio.waver.be/auth/realms/radiowaver`,
+   `KEYCLOAK_INTERNAL_ISSUER=http://keycloak:8080/auth/realms/radiowaver`.
 
 2. **Starten.**
    ```bash
    docker compose up -d --build
-   docker compose ps           # beide Up
-   docker compose logs -f web  # check de opstart
+   docker compose ps           # alle vier Up (keycloak ~30-60s)
+   docker compose logs -f web keycloak
    ```
 
 3. **Gedeelde Caddy.** Plak het blok uit `Caddyfile.snippet` bij de bestaande
-   reverse-proxy (in JEKA: `infra/reverse-proxy/`) en herlaad de gedeelde Caddy
-   (bv. `bash deploy/reverse-proxy-up.sh`, of `docker exec <caddy> caddy reload
-   --config /etc/caddy/Caddyfile`). Caddy regelt automatisch TLS.
+   reverse-proxy en herlaad de gedeelde Caddy (`docker exec reverse-proxy-caddy
+   caddy reload --config /etc/caddy/Caddyfile`). Caddy regelt automatisch TLS.
 
 4. **Firewall.** Open poort **8000** voor de bron, bij voorkeur beperkt tot het
    IP van de event-pc.
 
-5. **Testen.** Surf naar <https://radio.waver.be>. Offline tot er een bron is;
+5. **Beheer in gebruik nemen.** Surf naar <https://radio.waver.be/beheer/> en log
+   in met **`beheerder`** / **`radiowaver`**. Bij de eerste login vul je je
+   profiel aan en kies je een **nieuw wachtwoord**. (De master-admin console
+   staat op `/auth/admin` met `KC_ADMIN`/`KC_ADMIN_PASSWORD` uit `.env`.)
+
+6. **Testen.** Surf naar <https://radio.waver.be>. Offline tot er een bron is;
    *on air* zodra je aanlevert.
 
 > Draait de Caddy op de VM toch op de **host** (niet in Docker)? Zie de

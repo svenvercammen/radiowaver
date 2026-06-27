@@ -1,16 +1,12 @@
-# Productie op de OVH-VM, ingepast in het bestaande patroon van JEKA/daak:
-# een gedeelde Caddy-proxy (in Docker) op het externe netwerk `web` routeert
-# per containernaam naar de app. De app heeft dus GEEN host-poort voor
-# luisteraars; enkel Icecast publiceert poort 8000 zodat de bron (BUTT op de
-# event-pc) rechtstreeks kan aanleveren.
+# Productie op de OVH-VM, ingepast in het bestaande patroon (gedeelde Caddy op
+# netwerk `web`). Eigen compose-project radiowaver-prod met:
+#   icecast   - de streamingserver (poort 8000 voor de bron)
+#   api       - FastAPI-beheer (mededeling, agenda, partners) + uploads
+#   keycloak  - eigen Keycloak (login voor het beheer), realm-import
+#   web       - Caddy: statische speler + routing naar api/keycloak/uploads
 #
-#   eigen compose-project: radiowaver-prod
-#   gedeelde Caddy  ──(web)──►  radiowaver-web-prod:80
-#                                   ├─ /                file_server (speler)
-#                                   └─ /live, /status   ─(internal)─► icecast:8000
-#   event-pc (BUTT) ──(internet, poort 8000)──► icecast
-#
-# Lokaal testen zonder de gedeelde Caddy? Gebruik docker-compose.dev.yml.
+# De gedeelde Caddy routeert radio.waver.be -> radiowaver-web-prod:80.
+# Lokaal testen: docker-compose.dev.yml.
 name: radiowaver-prod
 
 services:
@@ -18,36 +14,57 @@ services:
     build: ./icecast
     container_name: radiowaver-icecast-prod
     restart: unless-stopped
-    # Wachtwoorden + hostname uit .env (zie .env.example). Nooit committen.
     env_file: .env
-    networks:
-      - internal
+    networks: [internal]
     ports:
-      # Nodig zodat de bron rechtstreeks kan aanleveren. Luisteraars gaan via
-      # de gedeelde Caddy, niet hierlangs. Tip: beperk 8000 in de firewall tot
-      # het IP van de event-pc.
-      - "8000:8000"
+      - "8000:8000"   # bron levert hier rechtstreeks aan (BUTT)
+
+  api:
+    build: ./backend
+    container_name: radiowaver-api-prod
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - data:/data
+    networks: [internal]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2.5
+    container_name: radiowaver-keycloak-prod
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD}
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_PROXY_HEADERS: xforwarded
+      KC_HOSTNAME: ${PUBLIC_URL}/auth
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+    volumes:
+      - kcdata:/opt/keycloak/data
+      - ./infra/keycloak:/opt/keycloak/data/import:ro
+    networks: [internal]
 
   web:
     image: caddy:2-alpine
     container_name: radiowaver-web-prod
     restart: unless-stopped
-    depends_on:
-      - icecast
-    networks:
-      # `web`: bereikbaar voor de gedeelde Caddy.
-      # `internal`: om Icecast te bereiken.
-      - web
-      - internal
+    depends_on: [icecast, api, keycloak]
+    networks: [web, internal]
     volumes:
       - ./Caddyfile.web:/etc/caddy/Caddyfile:ro
       - ./web:/srv/web:ro
-    # Geen host-poort: de gedeelde Caddy termineert TLS en routeert hierheen.
+      - data:/srv/data:ro          # geüploade logo's/affiches (read-only serveren)
 
 networks:
-  # Gedeeld proxy-netwerk, aangemaakt door de bestaande infra (JEKA/daak).
   web:
-    external: true
-  # Privé netwerk tussen de speler-container en Icecast.
+    external: true                  # gedeeld proxy-netwerk (van JEKA/daak)
   internal:
     name: radiowaver-internal
+
+volumes:
+  data:                             # SQLite-db + uploads
+  kcdata:                           # Keycloak-data (H2 + realm)

@@ -1,0 +1,45 @@
+{
+  "realm": "radiowaver",
+  "enabled": true,
+  "displayName": "Radio Waver — Beheer",
+  "loginTheme": "keycloak",
+  "sslRequired": "external",
+  "roles": {
+    "realm": [
+      { "name": "beheerder", "description": "Mag mededeling, agenda en partners beheren" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "radiowaver-beheer",
+      "name": "Radio Waver Beheer (frontend)",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "rootUrl": "https://radio.waver.be",
+      "baseUrl": "/beheer/",
+      "redirectUris": [
+        "https://radio.waver.be/beheer/*",
+        "http://localhost:8080/beheer/*"
+      ],
+      "webOrigins": ["+"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://radio.waver.be/beheer/*##http://localhost:8080/beheer/*"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "beheerder",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "radiowaver", "temporary": true }
+      ],
+      "realmRoles": ["beheerder"],
+      "requiredActions": ["UPDATE_PASSWORD"]
+    }
+  ]
+}

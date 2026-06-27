@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Radio Waver — Beheer</title>
+<link rel="icon" href="/assets/logo.png"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<style>body{font-family:'Work Sans',system-ui,sans-serif}</style>
+</head>
+<body class="bg-[#fcf9f8] text-[#1c1b1b] min-h-screen">
+<div id="loading" class="min-h-screen flex items-center justify-center text-[#717978]">Bezig met inloggen…</div>
+
+<div id="app" class="hidden max-w-3xl mx-auto px-4 py-8 space-y-10">
+  <header class="flex items-center justify-between border-b border-[#c0c8c8] pb-4">
+    <div class="flex items-center gap-3">
+      <img src="/assets/logo.png" class="h-10 w-auto" alt="Radio Waver"/>
+      <div>
+        <h1 class="text-2xl font-bold text-[#002627]">Beheer</h1>
+        <p class="text-sm text-[#717978]">Radio Waver</p>
+      </div>
+    </div>
+    <div class="text-right">
+      <p id="user" class="text-sm text-[#404848]"></p>
+      <button id="logout" class="text-sm text-[#b51c0d] font-semibold hover:underline">Afmelden</button>
+    </div>
+  </header>
+
+  <p id="msg" class="hidden rounded px-4 py-2 text-sm"></p>
+
+  <!-- Mededeling -->
+  <section class="bg-white border border-[#c0c8c8] rounded-lg p-6 space-y-4">
+    <h2 class="text-xl font-bold text-[#002627]">Mededeling (balk bovenaan)</h2>
+    <label class="flex items-center gap-3">
+      <input type="checkbox" id="ann-enabled" class="w-5 h-5"/>
+      <span>Toon de mededelingenbalk op de website</span>
+    </label>
+    <textarea id="ann-text" rows="2" placeholder="Bv. Vanavond live vanaf 19:00!" class="w-full border border-[#c0c8c8] rounded p-2"></textarea>
+    <button data-save="announcement" class="bg-[#002627] text-white px-5 py-2 rounded font-semibold hover:bg-[#0f3d3e]">Opslaan</button>
+  </section>
+
+  <!-- Live berichten -->
+  <section class="bg-white border border-[#c0c8c8] rounded-lg p-6 space-y-4">
+    <div class="flex items-center justify-between">
+      <h2 class="text-xl font-bold text-[#002627]">Live berichten</h2>
+      <span id="msg-pending-count" class="hidden text-sm font-semibold text-white bg-[#b51c0d] rounded-full px-3 py-1"></span>
+    </div>
+    <label class="flex items-center gap-3">
+      <input type="checkbox" id="msg-enabled" class="w-5 h-5"/>
+      <span>Module openbaar — bezoekers kunnen boodschappen insturen; goedgekeurde berichten scrollen bovenaan de website.</span>
+    </label>
+    <button data-save="messages-settings" class="bg-[#002627] text-white px-5 py-2 rounded font-semibold hover:bg-[#0f3d3e]">Opslaan</button>
+    <div id="messages-list" class="space-y-2 border-t border-[#c0c8c8] pt-4"></div>
+  </section>
+
+  <!-- Agenda -->
+  <section class="bg-white border border-[#c0c8c8] rounded-lg p-6 space-y-4">
+    <h2 class="text-xl font-bold text-[#002627]">Agenda — "On air op"</h2>
+    <div id="events-list" class="space-y-2"></div>
+    <form id="event-form" class="grid sm:grid-cols-2 gap-3 border-t border-[#c0c8c8] pt-4">
+      <input name="label" required placeholder="Bv. Vrijdag 10/06" class="border border-[#c0c8c8] rounded p-2"/>
+      <input name="time" placeholder="Bv. 19:00 uur" class="border border-[#c0c8c8] rounded p-2"/>
+      <label class="text-sm text-[#404848] sm:col-span-2">Logo / affiche (optioneel)
+        <input name="affiche" type="file" accept="image/*" class="block mt-1"/>
+      </label>
+      <button class="bg-[#b51c0d] text-white px-5 py-2 rounded font-semibold hover:bg-[#d93724] sm:col-span-2">Event toevoegen</button>
+    </form>
+  </section>
+
+  <!-- Partners -->
+  <section class="bg-white border border-[#c0c8c8] rounded-lg p-6 space-y-4">
+    <h2 class="text-xl font-bold text-[#002627]">Partners</h2>
+    <div id="partners-list" class="space-y-2"></div>
+    <form id="partner-form" class="grid sm:grid-cols-2 gap-3 border-t border-[#c0c8c8] pt-4">
+      <input name="name" required placeholder="Naam partner" class="border border-[#c0c8c8] rounded p-2"/>
+      <input name="url" placeholder="https://… (optioneel)" class="border border-[#c0c8c8] rounded p-2"/>
+      <label class="text-sm text-[#404848] sm:col-span-2">Logo (optioneel)
+        <input name="logo" type="file" accept="image/*" class="block mt-1"/>
+      </label>
+      <button class="bg-[#b51c0d] text-white px-5 py-2 rounded font-semibold hover:bg-[#d93724] sm:col-span-2">Partner toevoegen</button>
+    </form>
+  </section>
+</div>
+
+<script type="module">
+import Keycloak from "https://cdn.jsdelivr.net/npm/keycloak-js@26.2.4/+esm";
+(function(){
+  var kc = new Keycloak({ url: location.origin + "/auth", realm: "radiowaver", clientId: "radiowaver-beheer" });
+
+  kc.init({ onLoad: "login-required", pkceMethod: "S256" }).then(function(authed){
+    if(!authed){ location.reload(); return; }
+    document.getElementById("loading").classList.add("hidden");
+    document.getElementById("app").classList.remove("hidden");
+    document.getElementById("user").textContent = (kc.tokenParsed && (kc.tokenParsed.preferred_username || kc.tokenParsed.name)) || "";
+    start();
+  }).catch(function(){ document.getElementById("loading").textContent = "Inloggen mislukt."; });
+
+  document.getElementById("logout").addEventListener("click", function(){ kc.logout(); });
+
+  function msg(text, ok){
+    var el = document.getElementById("msg");
+    el.textContent = text;
+    el.className = "rounded px-4 py-2 text-sm " + (ok ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800");
+  }
+
+  function api(method, path, body){
+    return kc.updateToken(30).catch(function(){}).then(function(){
+      var opts = { method: method, headers: { "Authorization": "Bearer " + kc.token } };
+      if(body instanceof FormData){ opts.body = body; }
+      else if(body){ opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+      return fetch(path, opts).then(function(r){
+        if(!r.ok){ return r.text().then(function(t){ throw new Error(t || r.status); }); }
+        return r.status === 204 ? null : r.json();
+      });
+    });
+  }
+
+  function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+
+  function start(){
+    loadAnnouncement(); loadMessages(); loadEvents(); loadPartners();
+    setInterval(loadMessages, 15000);  // nieuwe boodschappen snel kunnen goedkeuren
+
+    document.querySelector('[data-save="announcement"]').addEventListener("click", function(){
+      api("PUT", "/api/admin/announcement", {
+        enabled: document.getElementById("ann-enabled").checked,
+        text: document.getElementById("ann-text").value
+      }).then(function(){ msg("Mededeling opgeslagen.", true); })
+        .catch(function(e){ msg("Fout: " + e.message, false); });
+    });
+
+    document.querySelector('[data-save="messages-settings"]').addEventListener("click", function(){
+      api("PUT", "/api/admin/messages/settings", { enabled: document.getElementById("msg-enabled").checked })
+        .then(function(){ msg("Live berichten-instelling opgeslagen.", true); loadMessages(); })
+        .catch(function(e){ msg("Fout: " + e.message, false); });
+    });
+
+    document.getElementById("event-form").addEventListener("submit", function(e){
+      e.preventDefault();
+      api("POST", "/api/admin/events", new FormData(e.target))
+        .then(function(){ e.target.reset(); loadEvents(); msg("Event toegevoegd.", true); })
+        .catch(function(err){ msg("Fout: " + err.message, false); });
+    });
+
+    document.getElementById("partner-form").addEventListener("submit", function(e){
+      e.preventDefault();
+      api("POST", "/api/admin/partners", new FormData(e.target))
+        .then(function(){ e.target.reset(); loadPartners(); msg("Partner toegevoegd.", true); })
+        .catch(function(err){ msg("Fout: " + err.message, false); });
+    });
+  }
+
+  function loadAnnouncement(){
+    api("GET", "/api/admin/announcement").then(function(a){
+      document.getElementById("ann-enabled").checked = !!a.enabled;
+      document.getElementById("ann-text").value = a.text || "";
+    });
+  }
+
+  function row(thumb, title, sub, onDelete){
+    var div = document.createElement("div");
+    div.className = "flex items-center gap-3 border border-[#c0c8c8] rounded p-2";
+    div.innerHTML =
+      (thumb ? '<img src="' + esc(thumb) + '" class="w-12 h-12 object-cover rounded"/>' : '<div class="w-12 h-12 rounded bg-[#f0eded]"></div>') +
+      '<div class="flex-grow"><p class="font-semibold">' + esc(title) + '</p>' +
+      (sub ? '<p class="text-sm text-[#717978]">' + esc(sub) + '</p>' : '') + '</div>' +
+      '<button class="text-[#b51c0d] font-semibold text-sm hover:underline">Verwijderen</button>';
+    div.querySelector("button").addEventListener("click", onDelete);
+    return div;
+  }
+
+  function loadMessages(){
+    var list = document.getElementById("messages-list");
+    api("GET", "/api/admin/messages").then(function(d){
+      document.getElementById("msg-enabled").checked = !!d.enabled;
+      var pending = d.items.filter(function(m){ return m.status === "pending"; }).length;
+      var badge = document.getElementById("msg-pending-count");
+      if(pending){ badge.textContent = pending + " wachten op goedkeuring"; badge.classList.remove("hidden"); }
+      else { badge.classList.add("hidden"); }
+
+      list.innerHTML = "";
+      if(!d.items.length){ list.innerHTML = '<p class="text-sm text-[#717978]">Nog geen berichten.</p>'; return; }
+      d.items.forEach(function(m){
+        var isPending = m.status === "pending";
+        var div = document.createElement("div");
+        div.className = "flex items-center gap-3 rounded p-2 border " + (isPending ? "border-[#ffb02e] bg-amber-50" : "border-[#c0c8c8]");
+        div.innerHTML =
+          '<div class="flex-grow"><p>' + esc(m.text) + '</p>' +
+          '<p class="text-xs text-[#717978]">' + (m.author ? esc(m.author) + " · " : "") +
+            (isPending ? "wacht op goedkeuring" : "goedgekeurd") + '</p></div>' +
+          (isPending ? '<button data-act="approve" class="bg-green-600 text-white text-sm font-semibold px-3 py-1 rounded hover:bg-green-700">Goedkeuren</button>' : "") +
+          '<button data-act="del" class="text-[#b51c0d] font-semibold text-sm hover:underline">Verwijderen</button>';
+        var ap = div.querySelector('[data-act="approve"]');
+        if(ap){ ap.addEventListener("click", function(){ api("POST", "/api/admin/messages/" + m.id + "/approve").then(loadMessages); }); }
+        div.querySelector('[data-act="del"]').addEventListener("click", function(){
+          if(confirm("Bericht verwijderen?")) api("DELETE", "/api/admin/messages/" + m.id).then(loadMessages);
+        });
+        list.appendChild(div);
+      });
+    });
+  }
+
+  function loadEvents(){
+    var list = document.getElementById("events-list");
+    api("GET", "/api/admin/events").then(function(items){
+      list.innerHTML = "";
+      if(!items.length){ list.innerHTML = '<p class="text-sm text-[#717978]">Nog geen events.</p>'; return; }
+      items.forEach(function(ev){
+        list.appendChild(row(ev.affiche, ev.label, ev.time, function(){
+          if(!confirm("Event verwijderen?")) return;
+          api("DELETE", "/api/admin/events/" + ev.id).then(loadEvents);
+        }));
+      });
+    });
+  }
+
+  function loadPartners(){
+    var list = document.getElementById("partners-list");
+    api("GET", "/api/admin/partners").then(function(items){
+      list.innerHTML = "";
+      if(!items.length){ list.innerHTML = '<p class="text-sm text-[#717978]">Nog geen partners.</p>'; return; }
+      items.forEach(function(p){
+        list.appendChild(row(p.logo, p.name, p.url, function(){
+          if(!confirm("Partner verwijderen?")) return;
+          api("DELETE", "/api/admin/partners/" + p.id).then(loadPartners);
+        }));
+      });
+    });
+  }
+})();
+</script>
+</body>
+</html>

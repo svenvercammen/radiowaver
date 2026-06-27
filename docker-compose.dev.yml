@@ -1,27 +1,67 @@
-# Lokale dev-omgeving: Icecast + een eigen Caddy ervoor, zodat je de hele
-# keten (speler -> /live + /status-json.xsl -> Icecast) test zoals in productie,
-# maar zonder TLS en op http://localhost:8080.
+# Lokale dev-omgeving: volledige stack (icecast + api + keycloak + caddy) op
+# http://localhost:8080. Bootst productie na, zonder TLS.
 #
 #   docker compose -f docker-compose.dev.yml up --build
-#   -> open http://localhost:8080
+#   - publiek:  http://localhost:8080
+#   - beheer:   http://localhost:8080/beheer/   (login: beheerder / radiowaver)
 #
-# Een test-bron pushen (zonder mengpaneel) staat in README.md.
+# Een test-bron pushen (zonder mengpaneel): zie README.md.
+name: radiowaver-dev
+
 services:
   icecast:
     build: ./icecast
     container_name: radiowaver-icecast-dev
     env_file: .env
+    networks: [devnet]
     ports:
-      # Open zodat je lokaal met BUTT/ffmpeg naar localhost:8000 kunt aanleveren.
       - "8000:8000"
+
+  api:
+    build: ./backend
+    container_name: radiowaver-api-dev
+    environment:
+      DATA_DIR: /data
+      KEYCLOAK_ISSUER: http://localhost:8080/auth/realms/radiowaver
+      KEYCLOAK_INTERNAL_ISSUER: http://keycloak:8080/auth/realms/radiowaver
+      KEYCLOAK_ADMIN_ROLE: beheerder
+    volumes:
+      - data:/data
+    networks: [devnet]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2.5
+    container_name: radiowaver-keycloak-dev
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_PROXY_HEADERS: xforwarded
+      KC_HOSTNAME: http://localhost:8080/auth
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+    volumes:
+      - kcdata:/opt/keycloak/data
+      - ./infra/keycloak:/opt/keycloak/data/import:ro
+    networks: [devnet]
 
   caddy:
     image: caddy:2-alpine
     container_name: radiowaver-caddy-dev
-    depends_on:
-      - icecast
+    depends_on: [icecast, api, keycloak]
     ports:
       - "8080:8080"
     volumes:
       - ./Caddyfile.dev:/etc/caddy/Caddyfile:ro
       - ./web:/srv/web:ro
+      - data:/srv/data:ro
+    networks: [devnet]
+
+networks:
+  devnet:
+    name: radiowaver-devnet
+
+volumes:
+  data:
+  kcdata:
