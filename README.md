@@ -188,5 +188,6 @@ waverfeest.be en daak.be; CPU/RAM van Icecast is minimaal.
 
 ## Documentatie
 
+- **Handleiding (zenden + luisteren, BUTT):** [handleiding.md](handleiding.md)
 - **PRD:** [briefing/radiowaver-prd.md](briefing/radiowaver-prd.md)
 - **Oorspronkelijke brief:** [briefing/README.md](briefing/README.md)
