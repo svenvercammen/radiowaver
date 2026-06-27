@@ -8,7 +8,7 @@ DB_PATH = os.path.join(DATA_DIR, "radiowaver.db")
 # Whitelist van tabellen + kolommen (kolomnamen komen nooit van de gebruiker).
 TABLES = {
     "partners": ["name", "url", "logo", "sort"],
-    "events": ["label", "time", "affiche", "sort"],
+    "events": ["name", "label", "time", "description", "affiche", "sort"],
     "messages": ["text", "author", "status"],
 }
 
@@ -31,9 +31,15 @@ def init_db():
     )
     c.execute(
         "CREATE TABLE IF NOT EXISTS events ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL, "
-        "time TEXT, affiche TEXT, sort INTEGER DEFAULT 0)"
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, label TEXT, "
+        "time TEXT, description TEXT, affiche TEXT, sort INTEGER DEFAULT 0)"
     )
+    # Migratie: kolommen toevoegen aan een bestaande events-tabel.
+    for col in ("name TEXT", "description TEXT"):
+        try:
+            c.execute(f"ALTER TABLE events ADD COLUMN {col}")
+        except sqlite3.OperationalError:
+            pass
     c.execute(
         "CREATE TABLE IF NOT EXISTS messages ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL, author TEXT, "

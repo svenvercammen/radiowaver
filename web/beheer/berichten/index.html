@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Radio Waver — Berichten modereren</title>
+<link rel="icon" href="/assets/logo.png"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<style>body{font-family:'Work Sans',system-ui,sans-serif}</style>
+</head>
+<body class="bg-[#fcf9f8] text-[#1c1b1b] min-h-screen">
+<div id="loading" class="min-h-screen flex items-center justify-center text-[#717978]">Bezig met inloggen…</div>
+
+<div id="app" class="hidden max-w-3xl mx-auto px-4 py-8 space-y-8">
+  <header class="flex items-center justify-between border-b border-[#c0c8c8] pb-4">
+    <div class="flex items-center gap-3">
+      <img src="/assets/logo.png" class="h-10 w-auto" alt="Radio Waver"/>
+      <div>
+        <h1 class="text-2xl font-bold text-[#002627]">Berichten modereren</h1>
+        <a href="/beheer/" class="text-sm text-[#b51c0d] font-semibold hover:underline">← terug naar beheer</a>
+      </div>
+    </div>
+    <div class="text-right">
+      <p id="user" class="text-sm text-[#404848]"></p>
+      <button id="logout" class="text-sm text-[#b51c0d] font-semibold hover:underline">Afmelden</button>
+    </div>
+  </header>
+
+  <p id="msg" class="hidden rounded px-4 py-2 text-sm"></p>
+
+  <!-- Module-schakelaar -->
+  <section class="bg-white border border-[#c0c8c8] rounded-lg p-4 flex items-center justify-between">
+    <label class="flex items-center gap-3">
+      <input type="checkbox" id="msg-enabled" class="w-5 h-5"/>
+      <span>Module openbaar (bezoekers kunnen insturen; goedgekeurde berichten scrollen op de site)</span>
+    </label>
+    <button data-save="settings" class="bg-[#002627] text-white px-4 py-2 rounded font-semibold hover:bg-[#0f3d3e] shrink-0">Opslaan</button>
+  </section>
+
+  <!-- Zelf een bericht toevoegen -->
+  <section class="bg-white border border-[#c0c8c8] rounded-lg p-6 space-y-3">
+    <h2 class="text-lg font-bold text-[#002627]">Zelf een bericht plaatsen</h2>
+    <form id="new-form" class="grid sm:grid-cols-[1fr_auto] gap-3 items-end">
+      <div class="space-y-2">
+        <textarea id="new-text" rows="2" maxlength="200" required placeholder="Boodschap…" class="w-full border border-[#c0c8c8] rounded p-2"></textarea>
+        <input id="new-author" maxlength="40" placeholder="Naam (optioneel)" class="w-full border border-[#c0c8c8] rounded p-2"/>
+      </div>
+      <button class="bg-[#b51c0d] text-white px-5 py-2 rounded font-semibold hover:bg-[#d93724] h-fit">Plaatsen (goedgekeurd)</button>
+    </form>
+  </section>
+
+  <!-- Lijst -->
+  <section class="space-y-3">
+    <div class="flex items-center justify-between">
+      <h2 class="text-lg font-bold text-[#002627]">Alle berichten</h2>
+      <span id="pending-count" class="hidden text-sm font-semibold text-white bg-[#b51c0d] rounded-full px-3 py-1"></span>
+    </div>
+    <div id="list" class="space-y-2"></div>
+  </section>
+</div>
+
+<script type="module">
+import Keycloak from "https://cdn.jsdelivr.net/npm/keycloak-js@26.2.4/+esm";
+(function(){
+  var kc = new Keycloak({ url: location.origin + "/auth", realm: "radiowaver", clientId: "radiowaver-beheer" });
+  var editingId = null;
+
+  kc.init({ onLoad: "login-required", pkceMethod: "S256" }).then(function(authed){
+    if(!authed){ location.reload(); return; }
+    document.getElementById("loading").classList.add("hidden");
+    document.getElementById("app").classList.remove("hidden");
+    document.getElementById("user").textContent = (kc.tokenParsed && (kc.tokenParsed.preferred_username || kc.tokenParsed.name)) || "";
+    start();
+  }).catch(function(){ document.getElementById("loading").textContent = "Inloggen mislukt."; });
+
+  document.getElementById("logout").addEventListener("click", function(){ kc.logout(); });
+
+  function msg(text, ok){
+    var el = document.getElementById("msg");
+    el.textContent = text;
+    el.className = "rounded px-4 py-2 text-sm " + (ok ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800");
+  }
+
+  function api(method, path, body){
+    return kc.updateToken(30).catch(function(){}).then(function(){
+      var opts = { method: method, headers: { "Authorization": "Bearer " + kc.token } };
+      if(body){ opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+      return fetch(path, opts).then(function(r){
+        if(!r.ok){ return r.text().then(function(t){ throw new Error(t || r.status); }); }
+        return r.status === 204 ? null : r.json();
+      });
+    });
+  }
+
+  function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+
+  function start(){
+    load();
+    setInterval(function(){ if(editingId === null) load(); }, 15000);
+
+    document.querySelector('[data-save="settings"]').addEventListener("click", function(){
+      api("PUT", "/api/admin/messages/settings", { enabled: document.getElementById("msg-enabled").checked })
+        .then(function(){ msg("Opgeslagen.", true); }).catch(function(e){ msg("Fout: " + e.message, false); });
+    });
+
+    document.getElementById("new-form").addEventListener("submit", function(e){
+      e.preventDefault();
+      api("POST", "/api/admin/messages", { text: document.getElementById("new-text").value, author: document.getElementById("new-author").value, status: "approved" })
+        .then(function(){ e.target.reset(); load(); msg("Bericht geplaatst.", true); })
+        .catch(function(err){ msg("Fout: " + err.message, false); });
+    });
+  }
+
+  function load(){
+    api("GET", "/api/admin/messages").then(function(d){
+      document.getElementById("msg-enabled").checked = !!d.enabled;
+      var pending = d.items.filter(function(m){ return m.status === "pending"; }).length;
+      var badge = document.getElementById("pending-count");
+      if(pending){ badge.textContent = pending + " wachten op goedkeuring"; badge.classList.remove("hidden"); }
+      else { badge.classList.add("hidden"); }
+
+      var list = document.getElementById("list");
+      list.innerHTML = "";
+      if(!d.items.length){ list.innerHTML = '<p class="text-sm text-[#717978]">Nog geen berichten.</p>'; return; }
+      d.items.forEach(function(m){ list.appendChild(rowView(m)); });
+    });
+  }
+
+  function rowView(m){
+    var isPending = m.status === "pending";
+    var div = document.createElement("div");
+    div.className = "rounded p-3 border " + (isPending ? "border-[#ffb02e] bg-amber-50" : "border-[#c0c8c8] bg-white");
+    div.innerHTML =
+      '<div class="flex items-start gap-3">' +
+        '<div class="flex-grow">' +
+          '<p>' + esc(m.text) + '</p>' +
+          '<p class="text-xs text-[#717978] mt-1">' + (m.author ? esc(m.author) + " · " : "") +
+            (isPending ? "wacht op goedkeuring" : "goedgekeurd") + " · " + esc(m.created || "") + '</p>' +
+        '</div>' +
+        '<div class="flex flex-col gap-1 shrink-0 text-sm font-semibold">' +
+          (isPending ? '<button data-act="approve" class="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700">Goedkeuren</button>' :
+                       '<button data-act="hide" class="text-[#717978] hover:underline">Op pending zetten</button>') +
+          '<button data-act="edit" class="text-[#002627] hover:underline">Bewerken</button>' +
+          '<button data-act="del" class="text-[#b51c0d] hover:underline">Verwijderen</button>' +
+        '</div>' +
+      '</div>';
+
+    var ap = div.querySelector('[data-act="approve"]');
+    if(ap) ap.addEventListener("click", function(){ api("POST", "/api/admin/messages/" + m.id + "/approve").then(load); });
+    var hd = div.querySelector('[data-act="hide"]');
+    if(hd) hd.addEventListener("click", function(){ api("PUT", "/api/admin/messages/" + m.id, { status: "pending" }).then(load); });
+    div.querySelector('[data-act="edit"]').addEventListener("click", function(){ editingId = m.id; div.replaceWith(rowEdit(m)); });
+    div.querySelector('[data-act="del"]').addEventListener("click", function(){
+      if(confirm("Bericht verwijderen?")) api("DELETE", "/api/admin/messages/" + m.id).then(load);
+    });
+    return div;
+  }
+
+  function rowEdit(m){
+    var div = document.createElement("div");
+    div.className = "rounded p-3 border border-[#002627] bg-white space-y-2";
+    div.innerHTML =
+      '<textarea class="edit-text w-full border border-[#c0c8c8] rounded p-2" rows="2" maxlength="200"></textarea>' +
+      '<input class="edit-author w-full border border-[#c0c8c8] rounded p-2" maxlength="40" placeholder="Naam (optioneel)"/>' +
+      '<div class="flex items-center gap-3">' +
+        '<label class="text-sm flex items-center gap-2"><input type="checkbox" class="edit-approved w-4 h-4"/> goedgekeurd</label>' +
+        '<span class="flex-grow"></span>' +
+        '<button data-act="save" class="bg-[#002627] text-white px-4 py-1 rounded font-semibold">Opslaan</button>' +
+        '<button data-act="cancel" class="text-[#717978] font-semibold">Annuleren</button>' +
+      '</div>';
+    div.querySelector(".edit-text").value = m.text || "";
+    div.querySelector(".edit-author").value = m.author || "";
+    div.querySelector(".edit-approved").checked = m.status === "approved";
+    div.querySelector('[data-act="save"]').addEventListener("click", function(){
+      api("PUT", "/api/admin/messages/" + m.id, {
+        text: div.querySelector(".edit-text").value,
+        author: div.querySelector(".edit-author").value,
+        status: div.querySelector(".edit-approved").checked ? "approved" : "pending"
+      }).then(function(){ editingId = null; load(); msg("Bericht bijgewerkt.", true); })
+        .catch(function(e){ msg("Fout: " + e.message, false); });
+    });
+    div.querySelector('[data-act="cancel"]').addEventListener("click", function(){ editingId = null; load(); });
+    return div;
+  }
+})();
+</script>
+</body>
+</html>

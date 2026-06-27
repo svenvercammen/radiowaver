@@ -7,7 +7,9 @@
 <link rel="icon" href="/assets/logo.png"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
-<style>body{font-family:'Work Sans',system-ui,sans-serif}</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/trix@2.1.15/dist/trix.min.css"/>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/trix@2.1.15/dist/trix.umd.min.js"></script>
+<style>body{font-family:'Work Sans',system-ui,sans-serif} trix-editor{min-height:100px}</style>
 </head>
 <body class="bg-[#fcf9f8] text-[#1c1b1b] min-h-screen">
 <div id="loading" class="min-h-screen flex items-center justify-center text-[#717978]">Bezig met inloggen…</div>
@@ -51,7 +53,9 @@
       <span>Module openbaar — bezoekers kunnen boodschappen insturen; goedgekeurde berichten scrollen bovenaan de website.</span>
     </label>
     <button data-save="messages-settings" class="bg-[#002627] text-white px-5 py-2 rounded font-semibold hover:bg-[#0f3d3e]">Opslaan</button>
-    <div id="messages-list" class="space-y-2 border-t border-[#c0c8c8] pt-4"></div>
+    <a href="/beheer/berichten/" class="inline-flex items-center gap-2 text-[#b51c0d] font-semibold hover:underline border-t border-[#c0c8c8] pt-4">
+      <span class="material-symbols-outlined">forum</span> Berichten modereren &amp; beheren →
+    </a>
   </section>
 
   <!-- Agenda -->
@@ -59,8 +63,14 @@
     <h2 class="text-xl font-bold text-[#002627]">Agenda — "On air op"</h2>
     <div id="events-list" class="space-y-2"></div>
     <form id="event-form" class="grid sm:grid-cols-2 gap-3 border-t border-[#c0c8c8] pt-4">
-      <input name="label" required placeholder="Bv. Vrijdag 10/06" class="border border-[#c0c8c8] rounded p-2"/>
-      <input name="time" placeholder="Bv. 19:00 uur" class="border border-[#c0c8c8] rounded p-2"/>
+      <input name="name" required placeholder="Naam van het evenement" class="border border-[#c0c8c8] rounded p-2 sm:col-span-2"/>
+      <input name="label" placeholder="Datum, bv. Vrijdag 10/06" class="border border-[#c0c8c8] rounded p-2"/>
+      <input name="time" placeholder="Uur, bv. 19:00 uur" class="border border-[#c0c8c8] rounded p-2"/>
+      <div class="sm:col-span-2">
+        <label class="text-sm text-[#404848] block mb-1">Extra uitleg (opmaak mogelijk)</label>
+        <input id="event-desc" type="hidden" name="description"/>
+        <trix-editor input="event-desc" class="bg-white rounded border border-[#c0c8c8]"></trix-editor>
+      </div>
       <label class="text-sm text-[#404848] sm:col-span-2">Logo / affiche (optioneel)
         <input name="affiche" type="file" accept="image/*" class="block mt-1"/>
       </label>
@@ -139,7 +149,12 @@ import Keycloak from "https://cdn.jsdelivr.net/npm/keycloak-js@26.2.4/+esm";
     document.getElementById("event-form").addEventListener("submit", function(e){
       e.preventDefault();
       api("POST", "/api/admin/events", new FormData(e.target))
-        .then(function(){ e.target.reset(); loadEvents(); msg("Event toegevoegd.", true); })
+        .then(function(){
+          e.target.reset();
+          var ed = document.querySelector("trix-editor");
+          if(ed && ed.editor) ed.editor.loadHTML("");
+          loadEvents(); msg("Event toegevoegd.", true);
+        })
         .catch(function(err){ msg("Fout: " + err.message, false); });
     });
 
@@ -171,33 +186,14 @@ import Keycloak from "https://cdn.jsdelivr.net/npm/keycloak-js@26.2.4/+esm";
   }
 
   function loadMessages(){
-    var list = document.getElementById("messages-list");
+    // De hoofdpagina toont enkel de schakelaar + het aantal openstaande
+    // berichten; het echte modereren/CRUD gebeurt op /beheer/berichten/.
     api("GET", "/api/admin/messages").then(function(d){
       document.getElementById("msg-enabled").checked = !!d.enabled;
       var pending = d.items.filter(function(m){ return m.status === "pending"; }).length;
       var badge = document.getElementById("msg-pending-count");
       if(pending){ badge.textContent = pending + " wachten op goedkeuring"; badge.classList.remove("hidden"); }
       else { badge.classList.add("hidden"); }
-
-      list.innerHTML = "";
-      if(!d.items.length){ list.innerHTML = '<p class="text-sm text-[#717978]">Nog geen berichten.</p>'; return; }
-      d.items.forEach(function(m){
-        var isPending = m.status === "pending";
-        var div = document.createElement("div");
-        div.className = "flex items-center gap-3 rounded p-2 border " + (isPending ? "border-[#ffb02e] bg-amber-50" : "border-[#c0c8c8]");
-        div.innerHTML =
-          '<div class="flex-grow"><p>' + esc(m.text) + '</p>' +
-          '<p class="text-xs text-[#717978]">' + (m.author ? esc(m.author) + " · " : "") +
-            (isPending ? "wacht op goedkeuring" : "goedgekeurd") + '</p></div>' +
-          (isPending ? '<button data-act="approve" class="bg-green-600 text-white text-sm font-semibold px-3 py-1 rounded hover:bg-green-700">Goedkeuren</button>' : "") +
-          '<button data-act="del" class="text-[#b51c0d] font-semibold text-sm hover:underline">Verwijderen</button>';
-        var ap = div.querySelector('[data-act="approve"]');
-        if(ap){ ap.addEventListener("click", function(){ api("POST", "/api/admin/messages/" + m.id + "/approve").then(loadMessages); }); }
-        div.querySelector('[data-act="del"]').addEventListener("click", function(){
-          if(confirm("Bericht verwijderen?")) api("DELETE", "/api/admin/messages/" + m.id).then(loadMessages);
-        });
-        list.appendChild(div);
-      });
     });
   }
 
@@ -207,7 +203,7 @@ import Keycloak from "https://cdn.jsdelivr.net/npm/keycloak-js@26.2.4/+esm";
       list.innerHTML = "";
       if(!items.length){ list.innerHTML = '<p class="text-sm text-[#717978]">Nog geen events.</p>'; return; }
       items.forEach(function(ev){
-        list.appendChild(row(ev.affiche, ev.label, ev.time, function(){
+        list.appendChild(row(ev.affiche, ev.name || ev.label, [ev.label, ev.time].filter(Boolean).join(" · "), function(){
           if(!confirm("Event verwijderen?")) return;
           api("DELETE", "/api/admin/events/" + ev.id).then(loadEvents);
         }));

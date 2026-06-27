@@ -123,6 +123,36 @@ def messages_settings(payload: dict, _=Depends(require_admin)):
     return {"ok": True}
 
 
+@app.post("/api/admin/messages")
+def admin_create_message(payload: dict, _=Depends(require_admin)):
+    """Beheerder maakt zelf een bericht (standaard meteen goedgekeurd)."""
+    text = str(payload.get("text", "")).strip()[:MESSAGE_MAX]
+    if not text:
+        raise HTTPException(status_code=400, detail="Lege boodschap.")
+    author = str(payload.get("author", "")).strip()[:AUTHOR_MAX]
+    status = payload.get("status", "approved")
+    if status not in ("pending", "approved"):
+        status = "approved"
+    rid = db.insert("messages", {"text": text, "author": author, "status": status})
+    return db.get_row("messages", rid)
+
+
+@app.put("/api/admin/messages/{message_id}")
+def admin_update_message(message_id: int, payload: dict, _=Depends(require_admin)):
+    row = db.get_row("messages", message_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="bericht niet gevonden")
+    data = {}
+    if "text" in payload:
+        data["text"] = str(payload["text"]).strip()[:MESSAGE_MAX]
+    if "author" in payload:
+        data["author"] = str(payload["author"]).strip()[:AUTHOR_MAX]
+    if "status" in payload and payload["status"] in ("pending", "approved"):
+        data["status"] = payload["status"]
+    db.update("messages", message_id, data)
+    return db.get_row("messages", message_id)
+
+
 @app.post("/api/admin/messages/{message_id}/approve")
 def approve_message(message_id: int, _=Depends(require_admin)):
     db.set_message_status(message_id, "approved")
@@ -145,15 +175,24 @@ def list_events(_=Depends(require_admin)):
 
 @app.post("/api/admin/events")
 def create_event(
-    label: str = Form(...),
+    name: str = Form(""),
+    label: str = Form(""),
     time: str = Form(""),
+    description: str = Form(""),
     sort: int = Form(0),
     affiche: Optional[UploadFile] = File(None),
     _=Depends(require_admin),
 ):
     rid = db.insert(
         "events",
-        {"label": label.strip(), "time": time.strip(), "affiche": _save_upload(affiche), "sort": sort},
+        {
+            "name": name.strip(),
+            "label": label.strip(),
+            "time": time.strip(),
+            "description": description.strip(),
+            "affiche": _save_upload(affiche),
+            "sort": sort,
+        },
     )
     return db.get_row("events", rid)
 
@@ -161,8 +200,10 @@ def create_event(
 @app.put("/api/admin/events/{event_id}")
 def update_event(
     event_id: int,
-    label: str = Form(...),
+    name: str = Form(""),
+    label: str = Form(""),
     time: str = Form(""),
+    description: str = Form(""),
     sort: int = Form(0),
     affiche: Optional[UploadFile] = File(None),
     _=Depends(require_admin),
@@ -170,7 +211,13 @@ def update_event(
     row = db.get_row("events", event_id)
     if not row:
         raise HTTPException(status_code=404, detail="event niet gevonden")
-    data = {"label": label.strip(), "time": time.strip(), "sort": sort}
+    data = {
+        "name": name.strip(),
+        "label": label.strip(),
+        "time": time.strip(),
+        "description": description.strip(),
+        "sort": sort,
+    }
     new_affiche = _save_upload(affiche)
     if new_affiche:
         _delete_upload(row.get("affiche"))
