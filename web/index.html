@@ -558,75 +558,73 @@
   audio.addEventListener("waiting", function(){ heroStatus.textContent = "bufferen…"; });
   audio.addEventListener("error",   function(){ setPlaying(false); audio.removeAttribute("src"); });
 
-  function pickSource(stats){
+  function pickByMount(stats, mount){
     if(!stats || !stats.icestats) return null;
     var s = stats.icestats.source;
     if(!s) return null;
-    if(Array.isArray(s)){
-      for(var i=0;i<s.length;i++){
-        var u = s[i].listenurl || "";
-        if(u.indexOf("/live") !== -1) return s[i];
-      }
-      return s[0];
+    var arr = Array.isArray(s) ? s : [s];
+    for(var i=0;i<arr.length;i++){
+      if((arr[i].listenurl || "").indexOf(mount) !== -1) return arr[i];
     }
-    return s;
+    return null;
   }
 
-  function goLive(src){
-    isLive = true;
-    setEnabled(true);
-    applyOrder(true);
-    badge.classList.remove("bg-outline");
-    badge.classList.add("bg-secondary", "live-pulse");
-    badgeText.textContent = "Live in de lucht";
+  // mode: "live" (echte uitzending) | "music" (non-stop muziek) | "offline"
+  function applyState(mode, src){
+    badge.classList.remove("bg-secondary", "bg-outline", "bg-amber-500", "live-pulse");
+    barLive.classList.remove("text-secondary", "text-amber-400", "text-white/50");
 
-    var title = (src.title || src.yp_currently_playing || "").toString().trim();
-    var t = title || "Live vanop het evenement";
-    nowTitle.textContent = t;
-    barTitle.textContent = t;
-    barLive.textContent = "LIVE";
-    barLive.classList.remove("text-white/50");
-    barLive.classList.add("text-secondary");
+    if(mode === "offline"){
+      isLive = false; setEnabled(false); applyOrder(false);
+      badge.classList.add("bg-outline"); badgeText.textContent = "Offline";
+      barLive.textContent = "OFFLINE"; barLive.classList.add("text-white/50");
+      barListeners.textContent = "—";
+      if(audio.paused){
+        nowTitle.textContent = "Nog niet live";
+        barTitle.textContent = "Niet in de lucht";
+        heroListeners.textContent = "— luisteraars";
+        heroStatus.textContent = "Offline";
+      }
+      return;
+    }
 
-    var n = (src.listeners != null) ? src.listeners : "—";
+    // Stream is altijd speelbaar (live of muziek).
+    isLive = true; setEnabled(true);
+    var live = (mode === "live");
+    applyOrder(live);
+
+    var title = (src && (src.title || src.yp_currently_playing) || "").toString().trim();
+    if(live){
+      badge.classList.add("bg-secondary", "live-pulse"); badgeText.textContent = "Live in de lucht";
+      barLive.textContent = "LIVE"; barLive.classList.add("text-secondary");
+      nowTitle.textContent = "Live vanop het evenement"; barTitle.textContent = "Live";
+      if(audio.paused) heroStatus.textContent = "Live";
+    } else {
+      badge.classList.add("bg-amber-500"); badgeText.textContent = "Non-stop muziek";
+      barLive.textContent = "MUZIEK"; barLive.classList.add("text-amber-400");
+      var t = title || "Non-stop muziek";
+      nowTitle.textContent = t; barTitle.textContent = t;
+      if(audio.paused) heroStatus.textContent = "Muziek";
+    }
+
+    var n = (src && src.listeners != null) ? src.listeners : "—";
     heroListeners.textContent = n + (n === 1 ? " luisteraar" : " luisteraars");
     barListeners.textContent = n;
-    if(audio.paused) heroStatus.textContent = "Live";
-  }
-
-  function goOffline(){
-    isLive = false;
-    setEnabled(false);
-    applyOrder(false);
-    badge.classList.remove("bg-secondary", "live-pulse");
-    badge.classList.add("bg-outline");
-    badgeText.textContent = "Offline";
-
-    barLive.textContent = "OFFLINE";
-    barLive.classList.remove("text-secondary");
-    barLive.classList.add("text-white/50");
-    barListeners.textContent = "—";
-
-    if(audio.paused){
-      nowTitle.textContent = "Nog niet live";
-      barTitle.textContent = "Niet in de lucht";
-      heroListeners.textContent = "— luisteraars";
-      heroStatus.textContent = "Offline";
-    }
   }
 
   function refresh(){
     fetch(STATUS, {cache:"no-store"})
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(stats){
-        var src = pickSource(stats);
-        if(src){ goLive(src); } else { goOffline(); }
+        var sLive = pickByMount(stats, "/live");
+        if(!sLive){ applyState("offline", null); return; }
+        applyState(pickByMount(stats, "/islive") ? "live" : "music", sLive);
       })
-      .catch(function(){ goOffline(); });
+      .catch(function(){ applyState("offline", null); });
   }
 
   setPlaying(false);
-  goOffline();
+  applyState("offline", null);
   refresh();
   setInterval(refresh, 10000);
 })();

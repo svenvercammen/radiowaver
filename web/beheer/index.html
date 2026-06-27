@@ -7,9 +7,8 @@
 <link rel="icon" href="/assets/logo.png"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/trix@2.1.15/dist/trix.min.css"/>
-<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/trix@2.1.15/dist/trix.umd.min.js"></script>
-<style>body{font-family:'Work Sans',system-ui,sans-serif} trix-editor{min-height:100px}</style>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&display=swap" rel="stylesheet"/>
+<style>body{font-family:'Work Sans',system-ui,sans-serif}</style>
 </head>
 <body class="bg-[#fcf9f8] text-[#1c1b1b] min-h-screen">
 <div id="loading" class="min-h-screen flex items-center justify-center text-[#717978]">Bezig met inloggen…</div>
@@ -58,25 +57,27 @@
     </a>
   </section>
 
-  <!-- Agenda -->
-  <section class="bg-white border border-[#c0c8c8] rounded-lg p-6 space-y-4">
-    <h2 class="text-xl font-bold text-[#002627]">Agenda — "On air op"</h2>
-    <div id="events-list" class="space-y-2"></div>
-    <form id="event-form" class="grid sm:grid-cols-2 gap-3 border-t border-[#c0c8c8] pt-4">
-      <input name="name" required placeholder="Naam van het evenement" class="border border-[#c0c8c8] rounded p-2 sm:col-span-2"/>
-      <input name="label" placeholder="Datum, bv. Vrijdag 10/06" class="border border-[#c0c8c8] rounded p-2"/>
-      <input name="time" placeholder="Uur, bv. 19:00 uur" class="border border-[#c0c8c8] rounded p-2"/>
-      <div class="sm:col-span-2">
-        <label class="text-sm text-[#404848] block mb-1">Extra uitleg (opmaak mogelijk)</label>
-        <input id="event-desc" type="hidden" name="description"/>
-        <trix-editor input="event-desc" class="bg-white rounded border border-[#c0c8c8]"></trix-editor>
+  <!-- Agenda (aparte pagina, volledige CRUD) -->
+  <a href="/beheer/agenda/" class="block bg-white border border-[#c0c8c8] rounded-lg p-6 hover:border-[#b51c0d] transition-colors">
+    <div class="flex items-center justify-between">
+      <div>
+        <h2 class="text-xl font-bold text-[#002627]">Agenda — "On air op"</h2>
+        <p class="text-sm text-[#717978]">Evenementen toevoegen, bewerken, ordenen (met affiche en uitleg).</p>
       </div>
-      <label class="text-sm text-[#404848] sm:col-span-2">Logo / affiche (optioneel)
-        <input name="affiche" type="file" accept="image/*" class="block mt-1"/>
-      </label>
-      <button class="bg-[#b51c0d] text-white px-5 py-2 rounded font-semibold hover:bg-[#d93724] sm:col-span-2">Event toevoegen</button>
-    </form>
-  </section>
+      <span class="material-symbols-outlined text-[#b51c0d]">arrow_forward</span>
+    </div>
+  </a>
+
+  <!-- Muziek / autoplay (aparte pagina) -->
+  <a href="/beheer/muziek/" class="block bg-white border border-[#c0c8c8] rounded-lg p-6 hover:border-[#b51c0d] transition-colors">
+    <div class="flex items-center justify-between">
+      <div>
+        <h2 class="text-xl font-bold text-[#002627]">Muziek — autoplay</h2>
+        <p class="text-sm text-[#717978]">MP3's die in lus spelen wanneer er geen live uitzending is.</p>
+      </div>
+      <span class="material-symbols-outlined text-[#b51c0d]">arrow_forward</span>
+    </div>
+  </a>
 
   <!-- Partners -->
   <section class="bg-white border border-[#c0c8c8] rounded-lg p-6 space-y-4">
@@ -129,7 +130,7 @@ import Keycloak from "https://cdn.jsdelivr.net/npm/keycloak-js@26.2.4/+esm";
   function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
 
   function start(){
-    loadAnnouncement(); loadMessages(); loadEvents(); loadPartners();
+    loadAnnouncement(); loadMessages(); loadPartners();
     setInterval(loadMessages, 15000);  // nieuwe boodschappen snel kunnen goedkeuren
 
     document.querySelector('[data-save="announcement"]').addEventListener("click", function(){
@@ -144,18 +145,6 @@ import Keycloak from "https://cdn.jsdelivr.net/npm/keycloak-js@26.2.4/+esm";
       api("PUT", "/api/admin/messages/settings", { enabled: document.getElementById("msg-enabled").checked })
         .then(function(){ msg("Live berichten-instelling opgeslagen.", true); loadMessages(); })
         .catch(function(e){ msg("Fout: " + e.message, false); });
-    });
-
-    document.getElementById("event-form").addEventListener("submit", function(e){
-      e.preventDefault();
-      api("POST", "/api/admin/events", new FormData(e.target))
-        .then(function(){
-          e.target.reset();
-          var ed = document.querySelector("trix-editor");
-          if(ed && ed.editor) ed.editor.loadHTML("");
-          loadEvents(); msg("Event toegevoegd.", true);
-        })
-        .catch(function(err){ msg("Fout: " + err.message, false); });
     });
 
     document.getElementById("partner-form").addEventListener("submit", function(e){
@@ -194,20 +183,6 @@ import Keycloak from "https://cdn.jsdelivr.net/npm/keycloak-js@26.2.4/+esm";
       var badge = document.getElementById("msg-pending-count");
       if(pending){ badge.textContent = pending + " wachten op goedkeuring"; badge.classList.remove("hidden"); }
       else { badge.classList.add("hidden"); }
-    });
-  }
-
-  function loadEvents(){
-    var list = document.getElementById("events-list");
-    api("GET", "/api/admin/events").then(function(items){
-      list.innerHTML = "";
-      if(!items.length){ list.innerHTML = '<p class="text-sm text-[#717978]">Nog geen events.</p>'; return; }
-      items.forEach(function(ev){
-        list.appendChild(row(ev.affiche, ev.name || ev.label, [ev.label, ev.time].filter(Boolean).join(" · "), function(){
-          if(!confirm("Event verwijderen?")) return;
-          api("DELETE", "/api/admin/events/" + ev.id).then(loadEvents);
-        }));
-      });
     });
   }
 

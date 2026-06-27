@@ -17,6 +17,20 @@ services:
     ports:
       - "8000:8000"
 
+  liquidsoap:
+    image: savonet/liquidsoap:v2.2.5
+    container_name: radiowaver-liquidsoap-dev
+    env_file: .env
+    depends_on: [icecast, api]
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["while [ ! -f /data/music/playlist.m3u ]; do sleep 1; done; exec liquidsoap /etc/liquidsoap/radio.liq"]
+    volumes:
+      - ./liquidsoap/radio.liq:/etc/liquidsoap/radio.liq:ro
+      - data:/data
+    ports:
+      - "8005:8005"
+    networks: [devnet]
+
   api:
     build: ./backend
     container_name: radiowaver-api-dev

@@ -10,6 +10,7 @@ TABLES = {
     "partners": ["name", "url", "logo", "sort"],
     "events": ["name", "label", "time", "description", "affiche", "sort"],
     "messages": ["text", "author", "status"],
+    "tracks": ["name", "file", "sort"],
 }
 
 
@@ -45,9 +46,15 @@ def init_db():
         "id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL, author TEXT, "
         "status TEXT DEFAULT 'pending', created TEXT DEFAULT CURRENT_TIMESTAMP)"
     )
+    c.execute(
+        "CREATE TABLE IF NOT EXISTS tracks ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, file TEXT NOT NULL, "
+        "sort INTEGER DEFAULT 0)"
+    )
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('announcement_enabled', '0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('announcement_text', '')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('messages_enabled', '0')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('music_enabled', '1')")
     conn.commit()
     conn.close()
 

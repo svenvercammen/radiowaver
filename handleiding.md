@@ -65,12 +65,17 @@ Open **Settings** (tandwiel-icoon) → tabblad **Main**. Klik bij *Server* op
 |---|---|
 | Type | **Icecast** |
 | Address | `radio.waver.be` |
-| Port | `8000` |
+| Port | `8005` |
 | Password | het **source-wachtwoord** (zie kader hieronder) |
 | Icecast mount | `/live` |
 | Icecast user | `source` |
 
 Klik op **Add / Save**.
+
+> **Always-on radio.** Je levert aan op poort **8005** (de mengtafel-server,
+> Liquidsoap). Zodra je uitzendt, hoort iedereen jou. Stop je, dan speelt de
+> radio **automatisch de ingestelde muziek** in lus verder — er is dus altijd
+> geluid. De muziek beheer je via *Beheer → Muziek*.
 
 > **Waar vind ik het source-wachtwoord?** Dat is de waarde van
 > `ICECAST_SOURCE_PASSWORD` in het bestand `.env` op de server. De beheerder
@@ -113,7 +118,7 @@ Open in een browser **<https://radio.waver.be>**:
 | Symptoom in BUTT | Waarschijnlijke oorzaak | Oplossing |
 |---|---|---|
 | Foutmelding over *authentication* / *password* | Source-wachtwoord klopt niet | Controleer het wachtwoord tegen `ICECAST_SOURCE_PASSWORD` in `.env` |
-| Foutmelding over *connection* / *timeout* | Poort 8000 geblokkeerd of fout adres | Check Address = `radio.waver.be`, Port = `8000`; controleer de firewall op de server |
+| Foutmelding over *connection* / *timeout* | Poort 8005 geblokkeerd of fout adres | Check Address = `radio.waver.be`, Port = `8005`; controleer de firewall op de server |
 | BUTT zendt uit, maar je hoort niets | Verkeerd audio-device of volume op nul | Kies in *Settings → Audio* het juiste device; check het ingangsvolume |
 | Pagina blijft op *offline* terwijl BUTT speelt | Verkeerde mount | Mount moet exact `/live` zijn |
 | Geluid hapert | Te krappe upload of te hoge bitrate | Check de internetverbinding op locatie; 128 kbps is het maximum voor dit event |
@@ -129,7 +134,7 @@ Open in een browser **<https://radio.waver.be>**:
 
 1. **Mengpaneel** aan op de audio-ingang van de pc; master-uit op een gezond
    niveau (niet clippen).
-2. **BUTT** openen → juiste **Server** geselecteerd (radio.waver.be / 8000 /
+2. **BUTT** openen → juiste **Server** geselecteerd (radio.waver.be / 8005 /
    `/live`) en juist **Audio device** (de mengpaneel-ingang).
 3. **Play** drukken in BUTT.
 4. **<https://radio.waver.be>** openen op je telefoon → controleer dat de status

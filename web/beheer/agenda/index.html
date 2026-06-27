@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Radio Waver — Agenda</title>
+<link rel="icon" href="/assets/logo.png"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/trix@2.1.15/dist/trix.min.css"/>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/trix@2.1.15/dist/trix.umd.min.js"></script>
+<style>body{font-family:'Work Sans',system-ui,sans-serif} trix-editor{min-height:90px;background:#fff}</style>
+</head>
+<body class="bg-[#fcf9f8] text-[#1c1b1b] min-h-screen">
+<div id="loading" class="min-h-screen flex items-center justify-center text-[#717978]">Bezig met inloggen…</div>
+
+<div id="app" class="hidden max-w-3xl mx-auto px-4 py-8 space-y-8">
+  <header class="flex items-center justify-between border-b border-[#c0c8c8] pb-4">
+    <div class="flex items-center gap-3">
+      <img src="/assets/logo.png" class="h-10 w-auto" alt="Radio Waver"/>
+      <div>
+        <h1 class="text-2xl font-bold text-[#002627]">Agenda</h1>
+        <a href="/beheer/" class="text-sm text-[#b51c0d] font-semibold hover:underline">← terug naar beheer</a>
+      </div>
+    </div>
+    <div class="text-right">
+      <p id="user" class="text-sm text-[#404848]"></p>
+      <button id="logout" class="text-sm text-[#b51c0d] font-semibold hover:underline">Afmelden</button>
+    </div>
+  </header>
+
+  <p id="msg" class="hidden rounded px-4 py-2 text-sm"></p>
+
+  <section class="bg-white border border-[#c0c8c8] rounded-lg p-6 space-y-3">
+    <h2 id="form-title" class="text-lg font-bold text-[#002627]">Evenement toevoegen</h2>
+    <form id="event-form" class="grid sm:grid-cols-2 gap-3">
+      <input name="name" required placeholder="Naam van het evenement" class="border border-[#c0c8c8] rounded p-2 sm:col-span-2"/>
+      <input name="label" placeholder="Datum, bv. Vrijdag 10/06" class="border border-[#c0c8c8] rounded p-2"/>
+      <input name="time" placeholder="Uur, bv. 19:00 uur" class="border border-[#c0c8c8] rounded p-2"/>
+      <div class="sm:col-span-2">
+        <label class="text-sm text-[#404848] block mb-1">Extra uitleg (opmaak mogelijk)</label>
+        <input id="event-desc" type="hidden" name="description"/>
+        <trix-editor input="event-desc" class="rounded border border-[#c0c8c8]"></trix-editor>
+      </div>
+      <label class="text-sm text-[#404848] sm:col-span-2">Logo / affiche (optioneel — leeg laten = ongewijzigd)
+        <input name="affiche" type="file" accept="image/*" class="block mt-1"/>
+      </label>
+      <div class="sm:col-span-2 flex gap-2">
+        <button id="submit-btn" class="bg-[#b51c0d] text-white px-5 py-2 rounded font-semibold hover:bg-[#d93724]">Toevoegen</button>
+        <button type="button" id="cancel-btn" class="hidden text-[#717978] font-semibold px-3">Annuleren</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="space-y-3">
+    <h2 class="text-lg font-bold text-[#002627]">Evenementen (versleep om te ordenen)</h2>
+    <div id="list" class="space-y-2"></div>
+  </section>
+</div>
+
+<script type="module">
+import Keycloak from "https://cdn.jsdelivr.net/npm/keycloak-js@26.2.4/+esm";
+(function(){
+  var kc = new Keycloak({ url: location.origin + "/auth", realm: "radiowaver", clientId: "radiowaver-beheer" });
+  var editingId = null, sortable = null;
+
+  kc.init({ onLoad: "login-required", pkceMethod: "S256" }).then(function(authed){
+    if(!authed){ location.reload(); return; }
+    document.getElementById("loading").classList.add("hidden");
+    document.getElementById("app").classList.remove("hidden");
+    document.getElementById("user").textContent = (kc.tokenParsed && (kc.tokenParsed.preferred_username || kc.tokenParsed.name)) || "";
+    start();
+  }).catch(function(){ document.getElementById("loading").textContent = "Inloggen mislukt."; });
+
+  document.getElementById("logout").addEventListener("click", function(){ kc.logout(); });
+
+  function msg(text, ok){
+    var el = document.getElementById("msg");
+    el.textContent = text;
+    el.className = "rounded px-4 py-2 text-sm " + (ok ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800");
+  }
+  function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+
+  function token(){ return kc.updateToken(30).catch(function(){}).then(function(){ return kc.token; }); }
+  function apiJson(method, path, body){
+    return token().then(function(t){
+      var opts = { method: method, headers: { "Authorization": "Bearer " + t } };
+      if(body){ opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+      return fetch(path, opts).then(function(r){ if(!r.ok) return r.text().then(function(x){ throw new Error(x); }); return r.status === 204 ? null : r.json(); });
+    });
+  }
+
+  function trix(){ return document.querySelector("trix-editor"); }
+
+  function resetForm(){
+    editingId = null;
+    document.getElementById("event-form").reset();
+    if(trix() && trix().editor) trix().editor.loadHTML("");
+    document.getElementById("form-title").textContent = "Evenement toevoegen";
+    document.getElementById("submit-btn").textContent = "Toevoegen";
+    document.getElementById("cancel-btn").classList.add("hidden");
+  }
+
+  function start(){
+    document.getElementById("cancel-btn").addEventListener("click", resetForm);
+
+    document.getElementById("event-form").addEventListener("submit", function(e){
+      e.preventDefault();
+      var fd = new FormData(e.target);
+      var path = editingId ? ("/api/admin/events/" + editingId) : "/api/admin/events";
+      var method = editingId ? "PUT" : "POST";
+      token().then(function(t){
+        return fetch(path, { method: method, headers: { "Authorization": "Bearer " + t }, body: fd });
+      }).then(function(r){ if(!r.ok) return r.text().then(function(x){ throw new Error(x); }); return r.json(); })
+        .then(function(){ resetForm(); load(); msg("Opgeslagen.", true); })
+        .catch(function(err){ msg("Fout: " + err.message, false); });
+    });
+
+    load();
+  }
+
+  function startEdit(ev){
+    editingId = ev.id;
+    var f = document.getElementById("event-form");
+    f.name.value = ev.name || "";
+    f.label.value = ev.label || "";
+    f.time.value = ev.time || "";
+    if(trix() && trix().editor) trix().editor.loadHTML(ev.description || "");
+    document.getElementById("form-title").textContent = "Evenement bewerken";
+    document.getElementById("submit-btn").textContent = "Opslaan";
+    document.getElementById("cancel-btn").classList.remove("hidden");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function load(){
+    apiJson("GET", "/api/admin/events").then(function(items){
+      var list = document.getElementById("list");
+      list.innerHTML = "";
+      if(!items.length){ list.innerHTML = '<p class="text-sm text-[#717978]">Nog geen evenementen.</p>'; return; }
+      items.forEach(function(ev){
+        var div = document.createElement("div");
+        div.className = "flex items-center gap-3 rounded p-2 border border-[#c0c8c8] bg-white";
+        div.dataset.id = ev.id;
+        var thumb = ev.affiche ? '<img src="' + esc(ev.affiche) + '" class="w-10 h-10 object-cover rounded"/>' : '';
+        div.innerHTML =
+          '<span class="material-symbols-outlined text-[#717978] cursor-grab select-none drag">drag_indicator</span>' + thumb +
+          '<div class="flex-grow"><p class="font-semibold">' + esc(ev.name || "(naamloos)") + '</p>' +
+          '<p class="text-xs text-[#717978]">' + esc([ev.label, ev.time].filter(Boolean).join(" · ")) + '</p></div>' +
+          '<button data-act="edit" class="text-[#002627] font-semibold text-sm hover:underline">Bewerken</button>' +
+          '<button data-act="del" class="text-[#b51c0d] font-semibold text-sm hover:underline">Verwijderen</button>';
+        div.querySelector('[data-act="edit"]').addEventListener("click", function(){ startEdit(ev); });
+        div.querySelector('[data-act="del"]').addEventListener("click", function(){
+          if(confirm("Evenement verwijderen?")) apiJson("DELETE", "/api/admin/events/" + ev.id).then(function(){ if(editingId === ev.id) resetForm(); load(); });
+        });
+        list.appendChild(div);
+      });
+      if(sortable) sortable.destroy();
+      sortable = Sortable.create(list, {
+        handle: ".drag", animation: 150,
+        onEnd: function(){
+          var ids = Array.from(list.children).map(function(el){ return parseInt(el.dataset.id, 10); }).filter(Boolean);
+          apiJson("PUT", "/api/admin/events/order", { ids: ids }).then(function(){ msg("Volgorde opgeslagen.", true); });
+        }
+      });
+    });
+  }
+})();
+</script>
+</body>
+</html>

@@ -11,7 +11,8 @@
     <limits>
         <!-- 50 luisteraars + wat marge voor bron, status en herverbindingen -->
         <clients>60</clients>
-        <sources>2</sources>
+        <!-- Liquidsoap levert 2 mounts: /live (altijd) + /islive (tijdens live). -->
+        <sources>3</sources>
         <queue-size>524288</queue-size>
         <client-timeout>30</client-timeout>
         <header-timeout>15</header-timeout>

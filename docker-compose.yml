@@ -16,8 +16,24 @@ services:
     restart: unless-stopped
     env_file: .env
     networks: [internal]
+    # Geen host-poort meer: Liquidsoap levert intern aan op /live, luisteraars
+    # gaan via de web-container. De bron komt binnen op Liquidsoap (8005).
+
+  liquidsoap:
+    image: savonet/liquidsoap:v2.2.5
+    container_name: radiowaver-liquidsoap-prod
+    restart: unless-stopped
+    env_file: .env
+    depends_on: [icecast, api]
+    # Wacht tot de API de playlist heeft aangemaakt, start dan Liquidsoap.
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["while [ ! -f /data/music/playlist.m3u ]; do sleep 1; done; exec liquidsoap /etc/liquidsoap/radio.liq"]
+    volumes:
+      - ./liquidsoap/radio.liq:/etc/liquidsoap/radio.liq:ro
+      - data:/data
     ports:
-      - "8000:8000"   # bron levert hier rechtstreeks aan (BUTT)
+      - "8005:8005"   # BUTT levert hier aan (harbor): poort 8005, mount /live
+    networks: [internal]
 
   api:
     build: ./backend

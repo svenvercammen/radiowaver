@@ -15,8 +15,12 @@ from .auth import require_admin
 
 app = FastAPI(title="Radio Waver API")
 
-UPLOAD_DIR = os.path.join(os.environ.get("DATA_DIR", "/data"), "uploads")
+DATA_DIR = os.environ.get("DATA_DIR", "/data")
+UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
+MUSIC_DIR = os.path.join(DATA_DIR, "music")
+PLAYLIST = os.path.join(MUSIC_DIR, "playlist.m3u")
 ALLOWED_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
+ALLOWED_AUDIO = {".mp3"}
 MESSAGE_MAX = 200
 AUTHOR_MAX = 40
 
@@ -25,6 +29,37 @@ AUTHOR_MAX = 40
 def _startup():
     db.init_db()
     os.makedirs(UPLOAD_DIR, exist_ok=True)
+    os.makedirs(MUSIC_DIR, exist_ok=True)
+    regenerate_playlist()
+
+
+def regenerate_playlist():
+    """Schrijf de Liquidsoap-playlist (m3u) in de huidige volgorde.
+
+    Atomair schrijven zodat Liquidsoap (reload_mode=watch) nooit een half
+    bestand inleest. Leeg als de muziekmodule uit staat.
+    """
+    os.makedirs(MUSIC_DIR, exist_ok=True)
+    enabled = db.get_setting("music_enabled", "1") == "1"
+    rows = db.list_rows("tracks") if enabled else []
+    tmp = PLAYLIST + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(r["file"] + "\n")
+    os.replace(tmp, PLAYLIST)
+
+
+def _save_audio(file: Optional[UploadFile]):
+    if file is None or not file.filename:
+        raise HTTPException(status_code=400, detail="geen bestand")
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_AUDIO:
+        raise HTTPException(status_code=400, detail="alleen .mp3 toegelaten")
+    name = f"{uuid.uuid4().hex}{ext}"
+    path = os.path.join(MUSIC_DIR, name)
+    with open(path, "wb") as out:
+        shutil.copyfileobj(file.file, out)
+    return path
 
 
 @app.get("/api/health")
@@ -197,6 +232,13 @@ def create_event(
     return db.get_row("events", rid)
 
 
+@app.put("/api/admin/events/order")
+def order_events(payload: dict, _=Depends(require_admin)):
+    for i, eid in enumerate(payload.get("ids", [])):
+        db.update("events", int(eid), {"sort": i})
+    return {"ok": True}
+
+
 @app.put("/api/admin/events/{event_id}")
 def update_event(
     event_id: int,
@@ -285,4 +327,66 @@ def delete_partner(partner_id: int, _=Depends(require_admin)):
     if row:
         _delete_upload(row.get("logo"))
         db.delete("partners", partner_id)
+    return {"ok": True}
+
+
+# --------------------------------------------------------------------------
+# Muziek / autoplay-fallback (Liquidsoap speelt deze MP3's in lus bij geen live)
+# --------------------------------------------------------------------------
+@app.get("/api/admin/tracks")
+def list_tracks(_=Depends(require_admin)):
+    return {
+        "enabled": db.get_setting("music_enabled", "1") == "1",
+        "items": db.list_rows("tracks"),
+    }
+
+
+@app.put("/api/admin/tracks/settings")
+def tracks_settings(payload: dict, _=Depends(require_admin)):
+    db.set_setting("music_enabled", "1" if payload.get("enabled") else "0")
+    regenerate_playlist()
+    return {"ok": True}
+
+
+@app.post("/api/admin/tracks")
+def create_track(name: str = Form(""), file: UploadFile = File(...), _=Depends(require_admin)):
+    path = _save_audio(file)
+    display = name.strip() or os.path.splitext(file.filename or "")[0]
+    rows = db.list_rows("tracks")
+    next_sort = (max(r["sort"] for r in rows) + 1) if rows else 0
+    rid = db.insert("tracks", {"name": display, "file": path, "sort": next_sort})
+    regenerate_playlist()
+    return db.get_row("tracks", rid)
+
+
+# Let op: /tracks/order vóór /tracks/{track_id} zodat 'order' niet als id wordt gelezen.
+@app.put("/api/admin/tracks/order")
+def order_tracks(payload: dict, _=Depends(require_admin)):
+    ids = payload.get("ids", [])
+    for i, tid in enumerate(ids):
+        db.update("tracks", int(tid), {"sort": i})
+    regenerate_playlist()
+    return {"ok": True}
+
+
+@app.put("/api/admin/tracks/{track_id}")
+def update_track(track_id: int, payload: dict, _=Depends(require_admin)):
+    row = db.get_row("tracks", track_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="track niet gevonden")
+    if "name" in payload:
+        db.update("tracks", track_id, {"name": str(payload["name"]).strip()})
+    return db.get_row("tracks", track_id)
+
+
+@app.delete("/api/admin/tracks/{track_id}")
+def delete_track(track_id: int, _=Depends(require_admin)):
+    row = db.get_row("tracks", track_id)
+    if row:
+        try:
+            os.remove(row["file"])
+        except OSError:
+            pass
+        db.delete("tracks", track_id)
+        regenerate_playlist()
     return {"ok": True}
