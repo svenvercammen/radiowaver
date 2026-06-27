@@ -55,6 +55,10 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('announcement_text', '')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('messages_enabled', '0')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('music_enabled', '1')")
+    # Fallback-bron bij geen live: 'mp3' (eigen lijst) of 'radio' (relay).
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('fallback_mode', 'mp3')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('radio_url', '')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('radio_name', '')")
     conn.commit()
     conn.close()
 

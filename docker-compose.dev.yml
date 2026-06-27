@@ -20,10 +20,12 @@ services:
   liquidsoap:
     image: savonet/liquidsoap:v2.2.5
     container_name: radiowaver-liquidsoap-dev
+    # Nodig voor de self-restart bij bronwissel (shutdown -> container herstart).
+    restart: unless-stopped
     env_file: .env
     depends_on: [icecast, api]
     entrypoint: ["/bin/sh", "-c"]
-    command: ["while [ ! -f /data/music/playlist.m3u ]; do sleep 1; done; exec liquidsoap /etc/liquidsoap/radio.liq"]
+    command: ["while [ ! -f /data/music/source.conf ]; do sleep 1; done; exec liquidsoap /etc/liquidsoap/radio.liq"]
     volumes:
       - ./liquidsoap/radio.liq:/etc/liquidsoap/radio.liq:ro
       - data:/data

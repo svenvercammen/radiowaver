@@ -41,8 +41,13 @@ Beslissingen:
 - **/beheer/berichten/** — live berichten: insturen, **goedkeuren** en CRUD.
 - **/beheer/agenda/** — evenementen: toevoegen/bewerken/verwijderen + **slepen**
   voor de volgorde, met affiche en rich-text uitleg.
-- **/beheer/muziek/** — MP3's voor de autoplay: uploaden, **slepen** voor de
-  volgorde, aan/uit. Liquidsoap speelt deze in lus bij geen live.
+- **/beheer/muziek/** — bron bij geen live: **eigen MP3-lijst** (uploaden,
+  **slepen**, aan/uit) of een **internetradio relayen** (kies een voorbeeld of
+  vul een eigen stream-URL in). Bij een bronwissel herstart Liquidsoap even
+  (~5s). De publieke pagina toont "Speelt momenteel: Live / Autoplay / <zender>".
+  - Relay-aandachtspunten: gebruik **http://**-stream-URL's (https faalt soms in
+    ffmpeg), en zorg dat je het **recht hebt om te heruitzenden** (licentie). Voor
+    vrij te gebruiken muziek: Creative Commons-zenders of de Free Music Archive.
 - De publieke pagina haalt mededeling/berichten/agenda/partners op uit
   `GET /api/content` (ververst elke 15 s; statische fallback).
 

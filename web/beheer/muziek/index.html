@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Radio Waver — Muziek (autoplay)</title>
+<title>Radio Waver — Muziek &amp; bron</title>
 <link rel="icon" href="/assets/logo.png"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js"></script>
@@ -18,7 +18,7 @@
     <div class="flex items-center gap-3">
       <img src="/assets/logo.png" class="h-10 w-auto" alt="Radio Waver"/>
       <div>
-        <h1 class="text-2xl font-bold text-[#002627]">Muziek — autoplay</h1>
+        <h1 class="text-2xl font-bold text-[#002627]">Muziek &amp; bron</h1>
         <a href="/beheer/" class="text-sm text-[#b51c0d] font-semibold hover:underline">← terug naar beheer</a>
       </div>
     </div>
@@ -28,23 +28,52 @@
     </div>
   </header>
 
-  <p class="text-sm text-[#404848] bg-[#f0eded] rounded p-3">
-    Wanneer er geen live uitzending is, speelt de radio deze MP3's automatisch af —
-    in deze volgorde, in een oneindige lus. Versleep om de volgorde te wijzigen.
-  </p>
-
   <p id="msg" class="hidden rounded px-4 py-2 text-sm"></p>
 
-  <section class="bg-white border border-[#c0c8c8] rounded-lg p-4 flex items-center justify-between">
+  <!-- Bronkeuze bij geen live -->
+  <section class="bg-white border border-[#c0c8c8] rounded-lg p-6 space-y-4">
+    <h2 class="text-lg font-bold text-[#002627]">Wat speelt er als er geen live uitzending is?</h2>
+
     <label class="flex items-center gap-3">
-      <input type="checkbox" id="music-enabled" class="w-5 h-5"/>
-      <span>Autoplay-muziek inschakelen (uit = stilte wanneer er geen live is)</span>
+      <input type="checkbox" id="fallback-enabled" class="w-5 h-5"/>
+      <span>Automatisch verder spelen (uit = stilte wanneer niemand live is)</span>
     </label>
-    <button data-save="settings" class="bg-[#002627] text-white px-4 py-2 rounded font-semibold hover:bg-[#0f3d3e] shrink-0">Opslaan</button>
+
+    <div class="space-y-2 border-t border-[#c0c8c8] pt-4">
+      <label class="flex items-center gap-3">
+        <input type="radio" name="mode" value="mp3" class="w-4 h-4"/>
+        <span class="font-semibold">Eigen muziek (MP3-lijst hieronder)</span>
+      </label>
+      <label class="flex items-center gap-3">
+        <input type="radio" name="mode" value="radio" class="w-4 h-4"/>
+        <span class="font-semibold">Internetradio relayen</span>
+      </label>
+    </div>
+
+    <div id="radio-config" class="hidden space-y-3 border-l-4 border-[#b51c0d] pl-4">
+      <div>
+        <label class="text-sm text-[#404848] block mb-1">Kies een zender of vul een eigen stream-URL in</label>
+        <select id="station" class="w-full border border-[#c0c8c8] rounded p-2"></select>
+      </div>
+      <div class="grid sm:grid-cols-2 gap-3">
+        <input id="radio-name" placeholder="Naam (toont op de site)" class="border border-[#c0c8c8] rounded p-2"/>
+        <input id="radio-url" placeholder="http://… stream-URL" class="border border-[#c0c8c8] rounded p-2"/>
+      </div>
+      <p class="text-xs text-[#717978]">
+        Gebruik bij voorkeur een <b>http://</b>-stream-URL (https werkt niet altijd).
+        Zorg dat je het <b>recht hebt om de zender te heruitzenden</b> (licentie/toestemming);
+        voor vrij te gebruiken muziek: Creative Commons-zenders of de Free Music Archive.
+        Bij het wisselen van bron is er even (~5s) een korte onderbreking.
+      </p>
+    </div>
+
+    <button data-save="fallback" class="bg-[#002627] text-white px-5 py-2 rounded font-semibold hover:bg-[#0f3d3e]">Opslaan</button>
   </section>
 
+  <!-- Eigen MP3-lijst -->
   <section class="bg-white border border-[#c0c8c8] rounded-lg p-6 space-y-3">
-    <h2 class="text-lg font-bold text-[#002627]">MP3 toevoegen</h2>
+    <h2 class="text-lg font-bold text-[#002627]">Eigen muziek (MP3-lijst)</h2>
+    <p class="text-sm text-[#717978]">Speelt in deze volgorde, in een oneindige lus, wanneer de bron hierboven op "Eigen muziek" staat. Versleep om te ordenen.</p>
     <form id="upload-form" class="grid sm:grid-cols-[1fr_auto] gap-3 items-end">
       <div class="space-y-2">
         <input id="track-name" placeholder="Titel (optioneel, anders bestandsnaam)" class="w-full border border-[#c0c8c8] rounded p-2"/>
@@ -53,10 +82,6 @@
       <button id="upload-btn" class="bg-[#b51c0d] text-white px-5 py-2 rounded font-semibold hover:bg-[#d93724] h-fit">Uploaden</button>
     </form>
     <p id="upload-status" class="text-sm text-[#717978]"></p>
-  </section>
-
-  <section class="space-y-3">
-    <h2 class="text-lg font-bold text-[#002627]">Afspeellijst (versleep om te ordenen)</h2>
     <div id="list" class="space-y-2"></div>
   </section>
 </div>
@@ -66,6 +91,13 @@ import Keycloak from "https://cdn.jsdelivr.net/npm/keycloak-js@26.2.4/+esm";
 (function(){
   var kc = new Keycloak({ url: location.origin + "/auth", realm: "radiowaver", clientId: "radiowaver-beheer" });
   var sortable = null;
+
+  // Voorbeeld-zenders (http, technisch werkend). Controleer zelf of heruitzenden mag.
+  var STATIONS = [
+    { name: "SomaFM — Groove Salad", url: "http://ice1.somafm.com/groovesalad-128-mp3" },
+    { name: "SomaFM — Drone Zone", url: "http://ice1.somafm.com/dronezone-128-mp3" },
+    { name: "SomaFM — Lush", url: "http://ice1.somafm.com/lush-128-mp3" }
+  ];
 
   kc.init({ onLoad: "login-required", pkceMethod: "S256" }).then(function(authed){
     if(!authed){ location.reload(); return; }
@@ -83,7 +115,6 @@ import Keycloak from "https://cdn.jsdelivr.net/npm/keycloak-js@26.2.4/+esm";
     el.className = "rounded px-4 py-2 text-sm " + (ok ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800");
   }
   function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
-
   function token(){ return kc.updateToken(30).catch(function(){}).then(function(){ return kc.token; }); }
   function api(method, path, body){
     return token().then(function(t){
@@ -96,12 +127,40 @@ import Keycloak from "https://cdn.jsdelivr.net/npm/keycloak-js@26.2.4/+esm";
     });
   }
 
-  function start(){
-    load();
+  function modeValue(){ var el = document.querySelector('input[name="mode"]:checked'); return el ? el.value : "mp3"; }
+  function syncRadioVisible(){ document.getElementById("radio-config").classList.toggle("hidden", modeValue() !== "radio"); }
 
-    document.querySelector('[data-save="settings"]').addEventListener("click", function(){
-      api("PUT", "/api/admin/tracks/settings", { enabled: document.getElementById("music-enabled").checked })
-        .then(function(){ msg("Opgeslagen.", true); }).catch(function(e){ msg("Fout: " + e.message, false); });
+  function fillStations(currentUrl){
+    var sel = document.getElementById("station");
+    sel.innerHTML = "";
+    STATIONS.forEach(function(s){
+      var o = document.createElement("option"); o.value = s.url; o.textContent = s.name; o.dataset.name = s.name; sel.appendChild(o);
+    });
+    var custom = document.createElement("option"); custom.value = "__custom__"; custom.textContent = "Eigen URL…"; sel.appendChild(custom);
+    // Selecteer de huidige als hij in de lijst staat, anders 'Eigen URL…'.
+    var match = STATIONS.find(function(s){ return s.url === currentUrl; });
+    sel.value = match ? currentUrl : "__custom__";
+  }
+
+  function start(){
+    document.querySelectorAll('input[name="mode"]').forEach(function(r){ r.addEventListener("change", syncRadioVisible); });
+    document.getElementById("station").addEventListener("change", function(e){
+      var opt = e.target.selectedOptions[0];
+      if(e.target.value === "__custom__"){ document.getElementById("radio-url").value = ""; document.getElementById("radio-name").value = ""; }
+      else { document.getElementById("radio-url").value = e.target.value; document.getElementById("radio-name").value = opt.dataset.name || ""; }
+    });
+
+    document.querySelector('[data-save="fallback"]').addEventListener("click", function(){
+      var mode = modeValue();
+      var body = { enabled: document.getElementById("fallback-enabled").checked, mode: mode };
+      if(mode === "radio"){
+        body.radio_url = document.getElementById("radio-url").value.trim();
+        body.radio_name = document.getElementById("radio-name").value.trim();
+        if(!body.radio_url){ msg("Vul een stream-URL in.", false); return; }
+      }
+      api("PUT", "/api/admin/fallback", body)
+        .then(function(){ msg("Bron opgeslagen." + (mode === "radio" ? " (Liquidsoap herstart even.)" : ""), true); })
+        .catch(function(e){ msg("Fout: " + e.message, false); });
     });
 
     document.getElementById("upload-form").addEventListener("submit", function(e){
@@ -113,22 +172,31 @@ import Keycloak from "https://cdn.jsdelivr.net/npm/keycloak-js@26.2.4/+esm";
       fd.append("file", fileInput.files[0]);
       document.getElementById("upload-btn").disabled = true;
       document.getElementById("upload-status").textContent = "Uploaden…";
-      token().then(function(t){
-        return fetch("/api/admin/tracks", { method: "POST", headers: { "Authorization": "Bearer " + t }, body: fd });
-      }).then(function(r){ if(!r.ok) return r.text().then(function(x){ throw new Error(x); }); return r.json(); })
-        .then(function(){
-          e.target.reset();
-          document.getElementById("upload-status").textContent = "";
-          load(); msg("MP3 toegevoegd.", true);
-        })
+      token().then(function(t){ return fetch("/api/admin/tracks", { method: "POST", headers: { "Authorization": "Bearer " + t }, body: fd }); })
+        .then(function(r){ if(!r.ok) return r.text().then(function(x){ throw new Error(x); }); return r.json(); })
+        .then(function(){ e.target.reset(); document.getElementById("upload-status").textContent = ""; loadTracks(); msg("MP3 toegevoegd.", true); })
         .catch(function(err){ document.getElementById("upload-status").textContent = ""; msg("Fout: " + err.message, false); })
         .finally(function(){ document.getElementById("upload-btn").disabled = false; });
     });
+
+    loadFallback();
+    loadTracks();
   }
 
-  function load(){
+  function loadFallback(){
+    api("GET", "/api/admin/fallback").then(function(d){
+      document.getElementById("fallback-enabled").checked = !!d.enabled;
+      var m = (d.mode === "radio") ? "radio" : "mp3";
+      var el = document.querySelector('input[name="mode"][value="' + m + '"]'); if(el) el.checked = true;
+      document.getElementById("radio-url").value = d.radio_url || "";
+      document.getElementById("radio-name").value = d.radio_name || "";
+      fillStations(d.radio_url || "");
+      syncRadioVisible();
+    });
+  }
+
+  function loadTracks(){
     api("GET", "/api/admin/tracks").then(function(d){
-      document.getElementById("music-enabled").checked = !!d.enabled;
       var list = document.getElementById("list");
       list.innerHTML = "";
       if(!d.items.length){ list.innerHTML = '<p class="text-sm text-[#717978]">Nog geen nummers.</p>'; return; }
@@ -142,22 +210,18 @@ import Keycloak from "https://cdn.jsdelivr.net/npm/keycloak-js@26.2.4/+esm";
           '<button data-act="rename" class="text-[#002627] font-semibold text-sm hover:underline">Naam</button>' +
           '<button data-act="del" class="text-[#b51c0d] font-semibold text-sm hover:underline">Verwijderen</button>';
         div.querySelector('[data-act="rename"]').addEventListener("click", function(){
-          var name = prompt("Nieuwe titel:", t.name || "");
-          if(name !== null) api("PUT", "/api/admin/tracks/" + t.id, { name: name }).then(load);
+          var name = prompt("Nieuwe titel:", t.name || ""); if(name !== null) api("PUT", "/api/admin/tracks/" + t.id, { name: name }).then(loadTracks);
         });
         div.querySelector('[data-act="del"]').addEventListener("click", function(){
-          if(confirm("Nummer verwijderen?")) api("DELETE", "/api/admin/tracks/" + t.id).then(load);
+          if(confirm("Nummer verwijderen?")) api("DELETE", "/api/admin/tracks/" + t.id).then(loadTracks);
         });
         list.appendChild(div);
       });
       if(sortable) sortable.destroy();
-      sortable = Sortable.create(list, {
-        handle: ".drag", animation: 150,
-        onEnd: function(){
-          var ids = Array.from(list.children).map(function(el){ return parseInt(el.dataset.id, 10); }).filter(Boolean);
-          api("PUT", "/api/admin/tracks/order", { ids: ids }).then(function(){ msg("Volgorde opgeslagen.", true); });
-        }
-      });
+      sortable = Sortable.create(list, { handle: ".drag", animation: 150, onEnd: function(){
+        var ids = Array.from(list.children).map(function(el){ return parseInt(el.dataset.id, 10); }).filter(Boolean);
+        api("PUT", "/api/admin/tracks/order", { ids: ids }).then(function(){ msg("Volgorde opgeslagen.", true); });
+      }});
     });
   }
 })();

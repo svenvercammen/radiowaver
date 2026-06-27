@@ -183,6 +183,7 @@
                 </div>
 <h1 class="text-headline-xl font-headline-xl text-white">Radio Waver</h1>
 <p class="text-body-lg font-body-lg opacity-90">Uw vertrouwde stem in de regio.</p>
+<p class="text-body-lg font-body-lg">Speelt momenteel: <b id="now-source" class="text-amber-300">…</b></p>
 <!-- Player Controls -->
 <div class="mt-8 bg-surface/10 backdrop-blur-md rounded-2xl p-8 border border-white/10 w-full max-w-lg mx-auto shadow-2xl">
 <div class="flex items-center justify-between mb-6">
@@ -436,6 +437,7 @@
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(d){
         if(!d) return;
+        window.RW_SOURCE = d.source || {fallback: "mp3", radio_name: ""};
         renderAnnouncement(d.announcement);
         renderMessages(d.messages);
         renderEvents(d.events);
@@ -502,6 +504,7 @@
   var hero = document.getElementById("hero");
   var agenda = document.getElementById("speeldata");
   var partners = document.getElementById("partners-section");
+  var nowSource = document.getElementById("now-source");
 
   var isLive = false;
   var lastMode = null;
@@ -592,6 +595,7 @@
       badge.classList.add("bg-outline"); badgeText.textContent = "Offline";
       barLive.textContent = "OFFLINE"; barLive.classList.add("text-white/50");
       barListeners.textContent = "—";
+      if(nowSource) nowSource.textContent = "Offline";
       if(audio.paused){
         nowTitle.textContent = "Nog niet live";
         barTitle.textContent = "Niet in de lucht";
@@ -611,11 +615,15 @@
       badge.classList.add("bg-secondary", "live-pulse"); badgeText.textContent = "Live in de lucht";
       barLive.textContent = "LIVE"; barLive.classList.add("text-secondary");
       nowTitle.textContent = "Live vanop het evenement"; barTitle.textContent = "Live";
+      if(nowSource) nowSource.textContent = "Live";
       if(audio.paused) heroStatus.textContent = "Live";
     } else {
       badge.classList.add("bg-amber-500"); badgeText.textContent = "Non-stop muziek";
       barLive.textContent = "MUZIEK"; barLive.classList.add("text-amber-400");
-      var t = title || "Non-stop muziek";
+      var f = window.RW_SOURCE || {};
+      var srcLabel = (f.fallback === "radio" && f.radio_name) ? f.radio_name : "Autoplay (eigen muziek)";
+      if(nowSource) nowSource.textContent = srcLabel;
+      var t = title || srcLabel;
       nowTitle.textContent = t; barTitle.textContent = t;
       if(audio.paused) heroStatus.textContent = "Muziek";
     }

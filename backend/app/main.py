@@ -19,6 +19,8 @@ DATA_DIR = os.environ.get("DATA_DIR", "/data")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 MUSIC_DIR = os.path.join(DATA_DIR, "music")
 PLAYLIST = os.path.join(MUSIC_DIR, "playlist.m3u")
+SOURCE_CONF = os.path.join(MUSIC_DIR, "source.conf")
+RESTART_TRIGGER = os.path.join(MUSIC_DIR, "restart.trigger")
 ALLOWED_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 ALLOWED_AUDIO = {".mp3"}
 MESSAGE_MAX = 200
@@ -31,22 +33,55 @@ def _startup():
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     os.makedirs(MUSIC_DIR, exist_ok=True)
     regenerate_playlist()
+    _write_source_conf()
+    # Zorg dat de trigger bestaat zodat Liquidsoap er een watch op kan zetten.
+    if not os.path.exists(RESTART_TRIGGER):
+        _atomic_write(RESTART_TRIGGER, "init\n")
+
+
+def _atomic_write(path, content):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(content)
+    os.replace(tmp, path)
 
 
 def regenerate_playlist():
-    """Schrijf de Liquidsoap-playlist (m3u) in de huidige volgorde.
+    """Schrijf de MP3-playlist (m3u) in volgorde — leeg als de module uit staat.
 
     Atomair schrijven zodat Liquidsoap (reload_mode=watch) nooit een half
-    bestand inleest. Leeg als de muziekmodule uit staat.
+    bestand inleest. (De radio-relay loopt via source.conf, niet via deze m3u.)
     """
     os.makedirs(MUSIC_DIR, exist_ok=True)
     enabled = db.get_setting("music_enabled", "1") == "1"
     rows = db.list_rows("tracks") if enabled else []
-    tmp = PLAYLIST + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        for r in rows:
-            f.write(r["file"] + "\n")
-    os.replace(tmp, PLAYLIST)
+    _atomic_write(PLAYLIST, "".join(r["file"] + "\n" for r in rows))
+
+
+def _write_source_conf():
+    """Schrijf de actieve fallback-bron. Geeft True terug als de inhoud wijzigde."""
+    enabled = db.get_setting("music_enabled", "1") == "1"
+    mode = db.get_setting("fallback_mode", "mp3")
+    url = (db.get_setting("radio_url", "") or "").strip()
+    if enabled and mode == "radio" and url:
+        content = "radio\n" + url + "\n"
+    else:
+        content = "mp3\n"
+    old = None
+    if os.path.exists(SOURCE_CONF):
+        with open(SOURCE_CONF, encoding="utf-8") as f:
+            old = f.read()
+    if old != content:
+        _atomic_write(SOURCE_CONF, content)
+        return True
+    return False
+
+
+def apply_fallback_config():
+    """Herbouw playlist + source.conf; herstart Liquidsoap als de bron wisselde."""
+    regenerate_playlist()
+    if _write_source_conf():
+        _atomic_write(RESTART_TRIGGER, uuid.uuid4().hex + "\n")
 
 
 def _save_audio(file: Optional[UploadFile]):
@@ -81,6 +116,10 @@ def content():
                 {"text": m["text"], "author": m["author"]}
                 for m in db.list_messages("approved")
             ],
+        },
+        "source": {
+            "fallback": db.get_setting("fallback_mode", "mp3"),
+            "radio_name": db.get_setting("radio_name", ""),
         },
         "events": db.list_rows("events"),
         "partners": db.list_rows("partners"),
@@ -331,6 +370,34 @@ def delete_partner(partner_id: int, _=Depends(require_admin)):
 
 
 # --------------------------------------------------------------------------
+# Fallback-bron bij geen live: eigen MP3-lijst of een internetradio relayen
+# --------------------------------------------------------------------------
+@app.get("/api/admin/fallback")
+def get_fallback(_=Depends(require_admin)):
+    return {
+        "enabled": db.get_setting("music_enabled", "1") == "1",
+        "mode": db.get_setting("fallback_mode", "mp3"),
+        "radio_url": db.get_setting("radio_url", ""),
+        "radio_name": db.get_setting("radio_name", ""),
+    }
+
+
+@app.put("/api/admin/fallback")
+def put_fallback(payload: dict, _=Depends(require_admin)):
+    if "enabled" in payload:
+        db.set_setting("music_enabled", "1" if payload.get("enabled") else "0")
+    mode = payload.get("mode")
+    if mode in ("mp3", "radio"):
+        db.set_setting("fallback_mode", mode)
+    if "radio_url" in payload:
+        db.set_setting("radio_url", str(payload.get("radio_url", "")).strip())
+    if "radio_name" in payload:
+        db.set_setting("radio_name", str(payload.get("radio_name", "")).strip())
+    apply_fallback_config()
+    return {"ok": True}
+
+
+# --------------------------------------------------------------------------
 # Muziek / autoplay-fallback (Liquidsoap speelt deze MP3's in lus bij geen live)
 # --------------------------------------------------------------------------
 @app.get("/api/admin/tracks")
@@ -344,7 +411,7 @@ def list_tracks(_=Depends(require_admin)):
 @app.put("/api/admin/tracks/settings")
 def tracks_settings(payload: dict, _=Depends(require_admin)):
     db.set_setting("music_enabled", "1" if payload.get("enabled") else "0")
-    regenerate_playlist()
+    apply_fallback_config()
     return {"ok": True}
 
 
