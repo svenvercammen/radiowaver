@@ -1,0 +1,20 @@
+# Interne Caddy van de radiowaver-web container (productie). Luistert op :80
+# binnen het Docker-netwerk; de gedeelde Caddy ervoor termineert TLS en
+# proxyt radio.waver.be hierheen. Daarom hier geen automatische HTTPS.
+{
+	auto_https off
+}
+
+:80 {
+	root * /srv/web
+
+	# Live stream + status van Icecast, same-origin (geen CORS nodig).
+	@icecast path /live /status-json.xsl
+	reverse_proxy @icecast icecast:8000 {
+		# -1 = low-latency: geen response-buffering op de audiostream.
+		flush_interval -1
+	}
+
+	# Statische spelerpagina voor de rest.
+	file_server
+}

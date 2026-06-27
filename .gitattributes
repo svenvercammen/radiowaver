@@ -1,0 +1,6 @@
+# Forceer LF zodat shell-scripts en configs werken in de Linux-containers,
+# ook na een clone op Windows.
+* text=auto eol=lf
+
+# Binaire bestanden ongemoeid laten.
+*.png binary

@@ -1,0 +1,12 @@
+# Secrets — nooit committen.
+.env
+
+# Lokale Claude Code-tooling (skills van een ander project); hoort niet in deze repo.
+.claude/
+
+# Logs / lokale rommel.
+*.log
+.DS_Store
+
+# Eventuele lokaal gegenereerde Icecast-config.
+icecast/icecast.xml

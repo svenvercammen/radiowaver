@@ -1,0 +1,53 @@
+# Productie op de OVH-VM, ingepast in het bestaande patroon van JEKA/daak:
+# een gedeelde Caddy-proxy (in Docker) op het externe netwerk `web` routeert
+# per containernaam naar de app. De app heeft dus GEEN host-poort voor
+# luisteraars; enkel Icecast publiceert poort 8000 zodat de bron (BUTT op de
+# event-pc) rechtstreeks kan aanleveren.
+#
+#   eigen compose-project: radiowaver-prod
+#   gedeelde Caddy  ──(web)──►  radiowaver-web-prod:80
+#                                   ├─ /                file_server (speler)
+#                                   └─ /live, /status   ─(internal)─► icecast:8000
+#   event-pc (BUTT) ──(internet, poort 8000)──► icecast
+#
+# Lokaal testen zonder de gedeelde Caddy? Gebruik docker-compose.dev.yml.
+name: radiowaver-prod
+
+services:
+  icecast:
+    build: ./icecast
+    container_name: radiowaver-icecast-prod
+    restart: unless-stopped
+    # Wachtwoorden + hostname uit .env (zie .env.example). Nooit committen.
+    env_file: .env
+    networks:
+      - internal
+    ports:
+      # Nodig zodat de bron rechtstreeks kan aanleveren. Luisteraars gaan via
+      # de gedeelde Caddy, niet hierlangs. Tip: beperk 8000 in de firewall tot
+      # het IP van de event-pc.
+      - "8000:8000"
+
+  web:
+    image: caddy:2-alpine
+    container_name: radiowaver-web-prod
+    restart: unless-stopped
+    depends_on:
+      - icecast
+    networks:
+      # `web`: bereikbaar voor de gedeelde Caddy.
+      # `internal`: om Icecast te bereiken.
+      - web
+      - internal
+    volumes:
+      - ./Caddyfile.web:/etc/caddy/Caddyfile:ro
+      - ./web:/srv/web:ro
+    # Geen host-poort: de gedeelde Caddy termineert TLS en routeert hierheen.
+
+networks:
+  # Gedeeld proxy-netwerk, aangemaakt door de bestaande infra (JEKA/daak).
+  web:
+    external: true
+  # Privé netwerk tussen de speler-container en Icecast.
+  internal:
+    name: radiowaver-internal

@@ -1,0 +1,21 @@
+services:
+  icecast:
+    build: .
+    container_name: radio-waver-icecast
+    restart: unless-stopped
+    ports:
+      # Poort 8000 is nodig zodat de bron (BUTT op de event-pc) rechtstreeks
+      # kan aanleveren. Luisteraars gaan via Caddy op 443, niet hierlangs.
+      # Tip: beperk 8000 in je firewall tot het IP van de event-pc.
+      - "8000:8000"
+    volumes:
+      - ./icecast.xml:/etc/icecast2/icecast.xml:ro
+
+# Draait Caddy zelf in Docker i.p.v. op de host? Zet icecast dan op hetzelfde
+# Docker-netwerk en proxy in de Caddyfile naar  icecast:8000  i.p.v.
+# 127.0.0.1:8000. Voeg dan onderaan toe:
+#
+# networks:
+#   default:
+#     name: jouw-bestaande-proxy-netwerk
+#     external: true

@@ -1,0 +1,27 @@
+# Lokale dev-omgeving: Icecast + een eigen Caddy ervoor, zodat je de hele
+# keten (speler -> /live + /status-json.xsl -> Icecast) test zoals in productie,
+# maar zonder TLS en op http://localhost:8080.
+#
+#   docker compose -f docker-compose.dev.yml up --build
+#   -> open http://localhost:8080
+#
+# Een test-bron pushen (zonder mengpaneel) staat in README.md.
+services:
+  icecast:
+    build: ./icecast
+    container_name: radiowaver-icecast-dev
+    env_file: .env
+    ports:
+      # Open zodat je lokaal met BUTT/ffmpeg naar localhost:8000 kunt aanleveren.
+      - "8000:8000"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: radiowaver-caddy-dev
+    depends_on:
+      - icecast
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./Caddyfile.dev:/etc/caddy/Caddyfile:ro
+      - ./web:/srv/web:ro

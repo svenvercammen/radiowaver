@@ -1,0 +1,24 @@
+# Voeg dit toe aan je bestaande Caddyfile (naast waverfeest.be en daak.be).
+#
+# Caddy regelt automatisch het TLS-certificaat voor radio.waver.be.
+# Bewust GEEN `encode` hier: compressie op een audiostream zorgt voor
+# bufferen/haperen. De HTML-pagina is te klein om compressie nodig te hebben.
+
+radio.waver.be {
+	root * /srv/radio-waver/web
+
+	# Live stream + status van Icecast.
+	# Zelfde origin als de spelerpagina, dus de speler kan /status-json.xsl
+	# zonder CORS-gedoe opvragen.
+	@icecast path /live /status-json.xsl
+	reverse_proxy @icecast 127.0.0.1:8000 {
+		# -1 = low-latency: geen response-buffering, meteen doorsturen.
+		flush_interval -1
+	}
+
+	# Statische spelerpagina voor al de rest (/, /index.html, assets, ...).
+	file_server
+}
+
+# Draait Caddy in Docker? Vervang dan 127.0.0.1:8000 door icecast:8000
+# en zet beide containers op hetzelfde Docker-netwerk.

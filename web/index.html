@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radio Waver — live</title>
+<meta name="description" content="Live webradio vanop het evenement.">
+<style>
+  :root{
+    --bg:#15171c; --panel:#1c1f26; --line:#2a2e37;
+    --text:#efeae0; --muted:#8a909b;
+    --onair:#ff4438; --amber:#ffb02e;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text); font-family:var(--sans);
+    display:flex; align-items:center; justify-content:center; padding:24px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .card{
+    width:100%; max-width:440px; background:var(--panel);
+    border:1px solid var(--line); border-radius:18px; padding:34px 30px 28px;
+  }
+  .top{display:flex; align-items:center; justify-content:space-between; gap:12px}
+  .eyebrow{
+    font-size:12px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--muted); font-family:var(--mono);
+  }
+  .badge{
+    display:inline-flex; align-items:center; gap:7px;
+    font-family:var(--mono); font-size:12px; letter-spacing:.14em;
+    padding:5px 10px; border-radius:999px;
+    border:1px solid var(--line); color:var(--muted);
+    transition:color .3s,border-color .3s,background .3s;
+  }
+  .badge .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background .3s}
+  .badge.live{color:var(--onair); border-color:rgba(255,68,56,.45); background:rgba(255,68,56,.08)}
+  .badge.live .dot{background:var(--onair); box-shadow:0 0 0 0 rgba(255,68,56,.6); animation:pulse 1.8s ease-out infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,68,56,.55)}70%{box-shadow:0 0 0 9px rgba(255,68,56,0)}100%{box-shadow:0 0 0 0 rgba(255,68,56,0)}}
+
+  .mark{margin:26px 0 4px; font-size:34px; font-weight:700; letter-spacing:-.02em}
+  .mark span{color:var(--amber)}
+  .now{min-height:22px; color:var(--muted); font-size:15px; margin-bottom:26px}
+  .now b{color:var(--text); font-weight:600}
+
+  .player{display:flex; align-items:center; gap:18px}
+  .play{
+    flex:none; width:72px; height:72px; border-radius:50%; cursor:pointer;
+    border:none; background:var(--amber); color:#1a1205;
+    display:flex; align-items:center; justify-content:center;
+    transition:transform .12s ease, background .2s, opacity .2s;
+  }
+  .play:hover{transform:scale(1.04)}
+  .play:active{transform:scale(.97)}
+  .play:focus-visible{outline:3px solid var(--amber); outline-offset:4px}
+  .play:disabled{background:var(--line); color:var(--muted); cursor:not-allowed}
+  .play svg{width:30px;height:30px;fill:currentColor}
+
+  .eq{display:flex; align-items:flex-end; gap:4px; height:34px}
+  .eq i{width:4px; height:8px; background:var(--muted); border-radius:2px; transition:background .3s}
+  .playing .eq i{background:var(--onair)}
+  .playing .eq i{animation:bounce 900ms ease-in-out infinite}
+  .playing .eq i:nth-child(2){animation-delay:.15s}
+  .playing .eq i:nth-child(3){animation-delay:.3s}
+  .playing .eq i:nth-child(4){animation-delay:.45s}
+  .playing .eq i:nth-child(5){animation-delay:.1s}
+  @keyframes bounce{0%,100%{height:8px}50%{height:30px}}
+
+  .meta{
+    margin-top:24px; padding-top:18px; border-top:1px solid var(--line);
+    display:flex; justify-content:space-between; font-family:var(--mono);
+    font-size:13px; color:var(--muted);
+  }
+  .meta b{color:var(--text); font-weight:500}
+
+  @media (prefers-reduced-motion:reduce){
+    .badge.live .dot{animation:none}
+    .playing .eq i{animation:none; height:18px}
+  }
+</style>
+</head>
+<body>
+  <main class="card" id="card">
+    <div class="top">
+      <span class="eyebrow">webradio</span>
+      <span class="badge" id="badge"><span class="dot"></span><span id="badgeText">offline</span></span>
+    </div>
+
+    <h1 class="mark">Radio <span>Waver</span></h1>
+    <p class="now" id="now">Verbinden…</p>
+
+    <div class="player">
+      <button class="play" id="play" aria-label="Afspelen" disabled>
+        <svg id="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+      </button>
+      <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+    </div>
+
+    <div class="meta">
+      <span>luisteraars · <b id="listeners">—</b></span>
+      <span id="status">—</span>
+    </div>
+  </main>
+
+  <audio id="audio" preload="none"></audio>
+
+<script>
+(function(){
+  var STREAM = "/live";
+  var STATUS = "/status-json.xsl";
+
+  var audio = document.getElementById("audio");
+  var card = document.getElementById("card");
+  var play = document.getElementById("play");
+  var icon = document.getElementById("icon");
+  var badge = document.getElementById("badge");
+  var badgeText = document.getElementById("badgeText");
+  var now = document.getElementById("now");
+  var listeners = document.getElementById("listeners");
+  var statusEl = document.getElementById("status");
+
+  var PLAY = "M8 5v14l11-7z";
+  var PAUSE = "M6 5h4v14H6zM14 5h4v14h-4z";
+  var isLive = false;
+
+  function setPlaying(on){
+    card.classList.toggle("playing", on);
+    icon.setAttribute("d", on ? PAUSE : PLAY);
+    play.setAttribute("aria-label", on ? "Pauzeren" : "Afspelen");
+  }
+
+  play.addEventListener("click", function(){
+    if(!audio.paused){ audio.pause(); return; }
+    // src pas bij play zetten zodat we niet nodeloos verbinden
+    if(!audio.src){ audio.src = STREAM + "?_=" + Date.now(); }
+    var p = audio.play();
+    if(p && p.catch){ p.catch(function(){ statusEl.textContent = "kon niet starten"; }); }
+  });
+
+  audio.addEventListener("playing", function(){ setPlaying(true); statusEl.textContent = "aan het spelen"; });
+  audio.addEventListener("pause", function(){ setPlaying(false); statusEl.textContent = "gepauzeerd"; });
+  audio.addEventListener("waiting", function(){ statusEl.textContent = "bufferen…"; });
+  audio.addEventListener("error", function(){
+    setPlaying(false);
+    statusEl.textContent = "stream offline";
+    audio.removeAttribute("src");
+  });
+
+  function pickSource(stats){
+    if(!stats || !stats.icestats) return null;
+    var s = stats.icestats.source;
+    if(!s) return null;
+    if(Array.isArray(s)){
+      for(var i=0;i<s.length;i++){
+        var u = s[i].listenurl || "";
+        if(u.indexOf("/live") !== -1) return s[i];
+      }
+      return s[0];
+    }
+    return s;
+  }
+
+  function refresh(){
+    fetch(STATUS, {cache:"no-store"})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(stats){
+        var src = pickSource(stats);
+        if(src){
+          isLive = true;
+          badge.classList.add("live");
+          badgeText.textContent = "on air";
+          play.disabled = false;
+          var title = src.title || src.yp_currently_playing || "";
+          now.innerHTML = title
+            ? '<b>' + escapeHtml(title) + '</b>'
+            : 'Live vanop het evenement';
+          listeners.textContent = (src.listeners != null) ? src.listeners : "—";
+        } else {
+          offline();
+        }
+      })
+      .catch(function(){ offline(); });
+  }
+
+  function offline(){
+    isLive = false;
+    badge.classList.remove("live");
+    badgeText.textContent = "offline";
+    listeners.textContent = "—";
+    if(audio.paused){
+      play.disabled = true;
+      now.textContent = "Nog niet live — kom straks terug.";
+      if(statusEl.textContent === "—") statusEl.textContent = "wachten op uitzending";
+    }
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+    });
+  }
+
+  refresh();
+  setInterval(refresh, 10000);
+})();
+</script>
+</body>
+</html>

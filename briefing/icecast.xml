@@ -1,0 +1,70 @@
+<icecast>
+    <!-- ============================================================= -->
+    <!--  VERANDER DEZE DRIE WACHTWOORDEN VOOR JE START.               -->
+    <!--  Commit dit bestand met echte wachtwoorden niet naar een      -->
+    <!--  publieke repo.                                               -->
+    <!-- ============================================================= -->
+
+    <location>Waver, BE</location>
+    <admin>admin@waver.be</admin>
+
+    <limits>
+        <!-- 50 luisteraars + wat marge voor bron, status en herverbindingen -->
+        <clients>60</clients>
+        <sources>2</sources>
+        <queue-size>524288</queue-size>
+        <client-timeout>30</client-timeout>
+        <header-timeout>15</header-timeout>
+        <source-timeout>10</source-timeout>
+        <!-- Snelle start voor de speler: stuur meteen wat buffer mee -->
+        <burst-on-connect>1</burst-on-connect>
+        <burst-size>65535</burst-size>
+    </limits>
+
+    <authentication>
+        <source-password>CHANGE_ME_source</source-password>
+        <relay-password>CHANGE_ME_relay</relay-password>
+        <admin-user>admin</admin-user>
+        <admin-password>CHANGE_ME_admin</admin-password>
+    </authentication>
+
+    <hostname>radio.waver.be</hostname>
+
+    <listen-socket>
+        <port>8000</port>
+    </listen-socket>
+
+    <mount type="normal">
+        <mount-name>/live</mount-name>
+        <max-listeners>55</max-listeners>
+        <!-- 0 = niet in publieke Icecast-directories tonen -->
+        <public>0</public>
+        <stream-name>Radio Waver</stream-name>
+        <stream-description>Live vanop het evenement</stream-description>
+        <stream-url>https://radio.waver.be</stream-url>
+    </mount>
+
+    <fileserve>1</fileserve>
+
+    <paths>
+        <basedir>/usr/share/icecast2</basedir>
+        <logdir>/var/log/icecast2</logdir>
+        <webroot>/usr/share/icecast2/web</webroot>
+        <adminroot>/usr/share/icecast2/admin</adminroot>
+    </paths>
+
+    <logging>
+        <accesslog>access.log</accesslog>
+        <errorlog>error.log</errorlog>
+        <loglevel>3</loglevel>
+        <logsize>10000</logsize>
+    </logging>
+
+    <security>
+        <chroot>0</chroot>
+        <changeowner>
+            <user>icecast2</user>
+            <group>icecast</group>
+        </changeowner>
+    </security>
+</icecast>

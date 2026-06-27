@@ -1,0 +1,29 @@
+# Blok voor de GEDEELDE Caddy op de VM (infra/reverse-proxy/, naast de blokken
+# van JEKA / daak.be / waverfeest.be). De gedeelde Caddy termineert TLS en
+# routeert radio.waver.be naar de radiowaver-web container op het netwerk `web`.
+#
+# Bewust GEEN `encode`: compressie op een audiostream zorgt voor haperen.
+
+radio.waver.be {
+	reverse_proxy radiowaver-web-prod:80 {
+		# -1 = low-latency: geen response-buffering, meteen doorsturen
+		# (belangrijk voor de audiostream die hierachter zit).
+		flush_interval -1
+	}
+}
+
+# Draait de Caddy op de VM toch op de HOST i.p.v. in Docker? Dan is het
+# `web`-containerpatroon niet van toepassing en kun je rechtstreeks naar
+# Icecast proxyen. Vervang het blok hierboden dan door:
+#
+#   radio.waver.be {
+#       root * /srv/radio-waver/web
+#       @icecast path /live /status-json.xsl
+#       reverse_proxy @icecast 127.0.0.1:8000 {
+#           flush_interval -1
+#       }
+#       file_server
+#   }
+#
+# en kopieer web/index.html naar /srv/radio-waver/web/ (in plaats van de
+# radiowaver-web container te gebruiken).
